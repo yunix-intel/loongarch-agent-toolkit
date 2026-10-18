@@ -245,15 +245,18 @@ on Linux”。这是 Desktop 自身在 LoongArch 上的限制，与 ccswitch-lit
 - JSON 文件会被重新序列化（缩进 2 空格、键顺序变化），语义与字段内容保持不变；
 - Web UI 无鉴权，仅绑定回环地址。
 
-## 官方 cc-switch 的 Tauri 移植结论
+## 官方 cc-switch 的 Tauri 移植结论（已更正）
 
-**未移植，硬阻塞成立。**
+早期“未移植、ring 硬阻塞”的结论**已被实测推翻**：
 
-- `Cargo.lock` 锁定 `ring 0.17.14`；`reqwest` 启用 `rustls-tls`，且
-  `hyper-rustls` 显式启用 `ring` feature；`quinn-proto`、`rustls-webpki` 也引用 ring；
-- ring 的 `build.rs` 对未知架构直接 panic；其实现按 x86/x86_64/aarch64/arm 组织汇编，
-  没有 loongarch64 后端，也没有可用的通用 C 回退。仅改 `build.rs` 无法通过链接；
-- 可行方向（均非“小补丁”）：把 rustls/quinn/webpki 的加密提供者整体换为纯 Rust
-  provider（如 rustls-rustcrypto），并消除所有 ring feature；同时机器上目前没有
-  Rust/cargo 工具链，Tauri 还需要 WebKitGTK 开发包与完整构建验证；
-- 因此按任务要求停在此处，用 ccswitch-lite 覆盖私有网关切换这一核心需求。
+- 官方 cc-switch **v4.0.15** 已在 loongarch64 上用 **Rust 1.97.1 直接构建成功**；
+- `ring 0.17.14` 能正常编译；其 `build.rs` 的 `panic!("unsupported arch")`
+  只在 Windows x86 的 NASM 路径触发，Linux loong64 构建不会走到；
+- 构建命令必须带 `--features tauri/custom-protocol`，否则 webview 仍指向
+  `devUrl` 的 `localhost:3000`；
+- 官方完整 UI（Claude Code / Claude Desktop / Codex / Gemini / OpenCode /
+  MCP / Skills / Prompts 等）已在 Xvfb 下验证。
+
+私有移植仓库：<https://github.com/yunix-intel/cc-switch-loongarch>；
+构建、runner 与 `.deb` 细节见 `docs/cc-switch-loongarch.md`。
+`ccswitch-lite` 仍作为轻量、stdlib-only 的替代方案保留。

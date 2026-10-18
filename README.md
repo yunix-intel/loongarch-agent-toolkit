@@ -13,9 +13,13 @@ This repository collects four pieces of work:
 | [`claude-desktop-repack/`](claude-desktop-repack/) | Scripts used for an unofficial Claude Desktop loong64 repack | Experimental; UI/login works, bundled Claude Code is x86-64 |
 
 The official [`farion1231/cc-switch`](https://github.com/farion1231/cc-switch)
-Tauri app was **not** ported: its dependency graph hard-depends on `ring`,
-which has no loongarch64 backend. See
-[`docs/tauri-loongarch.md`](docs/tauri-loongarch.md).
+Tauri app **has been built for loongarch64**: upstream v4.0.15 compiles with
+Rust 1.97.1 and its full UI has been verified under Xvfb. The port lives in the
+private repository
+[`yunix-intel/cc-switch-loongarch`](https://github.com/yunix-intel/cc-switch-loongarch);
+build details are in
+[`docs/cc-switch-loongarch.md`](docs/cc-switch-loongarch.md). `ccswitch-lite`
+remains a lighter single-binary alternative.
 
 ![ccswitch-lite driving Claude Desktop 3P mode](docs/screenshots/ccswitch-3p-gateway.png)
 
@@ -26,7 +30,7 @@ ccswitch-lite/          Go source, embedded Web UI, tests/
 zcode-tauri/            Tauri 2 source, frontend loading page, packaging
 install/                Agent installer + reference wrappers
 claude-desktop-repack/  Repack scripts and Debian metadata (no app payload)
-docs/                   ABI/Node, Tauri/ring, screenshots
+docs/                   ABI/Node, cc-switch port, Tauri, screenshots
 .github/workflows/      ccswitch-lite build + shellcheck CI
 ```
 
@@ -131,8 +135,10 @@ Not affiliated with Anthropic.
 - Custom headers are written only for Codex; Desktop/Claude Code have no
   corresponding config slot.
 - The Web UI has no authentication and is loopback-only by design.
-- The official cc-switch Tauri port remains blocked by `ring`; `ccswitch-lite`
-  covers the gateway-switching use case instead.
+- The official cc-switch loong64 port is built from upstream source and ships a
+  `.deb`; see
+  [`docs/cc-switch-loongarch.md`](docs/cc-switch-loongarch.md). `ccswitch-lite`
+  remains the smaller, stdlib-only option.
 - Claude Desktop's bundled Claude Code is x86-64, so Code/Cowork cannot run on
   LoongArch.
 

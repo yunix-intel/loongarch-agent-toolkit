@@ -1,8 +1,9 @@
 # Tauri 2 on LoongArch notes
 
 This repository's `zcode-tauri` is our own small Tauri 2 shell around the ZCode
-Web UI. It builds cleanly on loong64. The official cc-switch Tauri port is a
-separate, harder problem, blocked by `ring`.
+Web UI. It builds cleanly on loong64 with Rust 1.85. The official cc-switch is a
+separate project; its loong64 build uses Rust 1.97.1 and is documented in
+[`docs/cc-switch-loongarch.md`](cc-switch-loongarch.md).
 
 ## Toolchain that worked
 
@@ -58,21 +59,23 @@ loading page is a tracked source file rather than a generated `dist/` directory.
 The launcher also prepends `/opt/node24/bin` to `PATH`, because ZCode itself
 uses Node 24.
 
-## The ring blocker for porting cc-switch
+## ring on loongarch64
 
-The official `farion1231/cc-switch` Tauri app locks `ring 0.17.14` through
-`reqwest` (`rustls-tls`), `hyper-rustls` (explicit `ring` feature),
-`quinn-proto` and `rustls-webpki`.
+Earlier revisions of this note claimed that `ring` blocked the official
+cc-switch port. That was wrong:
 
-`ring`'s `build.rs` panics on unknown architectures, and its assembly backends
-only cover x86/x86_64/aarch64/arm. There is no loongarch64 backend and no
-generic C fallback. Patching only `build.rs` cannot link.
+- `ring 0.17.14` compiles on loongarch64 with Rust 1.97.1;
+- the `panic!("unsupported arch")` branch in `ring`'s `build.rs` belongs to the
+  Windows x86 NASM path and is not taken by the Linux loong64 build;
+- official cc-switch builds with
+  `cargo build --release --locked --features tauri/custom-protocol`.
+  `custom-protocol` is mandatory: without it the webview keeps pointing at the
+  `devUrl` (`localhost:3000`) instead of the bundled frontend.
 
-A port would require replacing the crypto provider across the whole graph
-(for example with `rustls-rustcrypto`) and removing every `ring` feature. That
-is not a small patch, so this repository provides `ccswitch-lite` instead.
+The port, its self-hosted runner and the `.deb` packaging are described in
+[`docs/cc-switch-loongarch.md`](cc-switch-loongarch.md).
 
-By contrast, `zcode-tauri` has no `ring` dependency:
+`zcode-tauri` itself has no `ring` dependency:
 
 ```sh
 cargo tree -i ring
