@@ -3,8 +3,8 @@
 # Run after: cargo build --release --manifest-path src-tauri/Cargo.toml
 set -eu
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+ROOT=$(CDPATH='' cd -- "$SCRIPT_DIR/.." && pwd)
 VERSION=${VERSION:-3.15.1-1}
 
 PKG=$ROOT/pkg/zcode-tauri

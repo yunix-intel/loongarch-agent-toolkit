@@ -12,10 +12,10 @@
 #   MOCK_GATEWAY=<repo>/ccswitch-lite/tests/mock_gateway.py
 set -uo pipefail
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 BASE=${BASE:-/tmp/ccswitch-desktop}
 APP=${CLAUDE_DESKTOP_APP:-/opt/claude-desktop/claude-desktop}
-BIN=${BIN:-$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)/ccswitch-lite}
+BIN=${BIN:-$(CDPATH='' cd -- "$SCRIPT_DIR/.." && pwd)/ccswitch-lite}
 MOCK_GATEWAY=${MOCK_GATEWAY:-$SCRIPT_DIR/mock_gateway.py}
 export HOME="$BASE/home"
 export XDG_CONFIG_HOME="$HOME/.config"

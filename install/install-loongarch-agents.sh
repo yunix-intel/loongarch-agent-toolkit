@@ -68,7 +68,7 @@ case "$NODE_PREFIX" in
     *) die "NODE_PREFIX must be an absolute path: $NODE_PREFIX" ;;
 esac
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 
 elf_flags() {
     LC_ALL=C readelf -h "$1" 2>/dev/null \
@@ -203,4 +203,4 @@ log "verifying wrappers"
 log "done"
 printf '\nNode:     %s (%s) at %s\n' "$NODE_VER" "$NODE_ABI" "$NODE_PREFIX"
 printf 'Wrappers: %s/{codex,dsh,opencode}\n' "$BIN_DIR"
-printf 'Set PATH if needed: export PATH="%s:$PATH"\n' "$BIN_DIR"
+printf 'Add %s to PATH if needed.\n' "$BIN_DIR"

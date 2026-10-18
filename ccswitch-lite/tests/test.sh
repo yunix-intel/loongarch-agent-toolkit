@@ -5,7 +5,7 @@ set -euo pipefail
 
 # Usage: BIN=/path/to/ccswitch-lite ./tests/test.sh
 # Requires: bash, python3 (3.11+ for tomllib), curl, sha256sum.
-BIN=${BIN:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)/ccswitch-lite}
+BIN=${BIN:-$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)/ccswitch-lite}
 BASE=${BASE:-/tmp/ccswitch-test}
 export BASE
 rm -rf "$BASE"
