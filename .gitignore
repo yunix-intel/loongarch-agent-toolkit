@@ -1,0 +1,62 @@
+# Build outputs / compiled artifacts
+target/
+dist/
+pkg/
+*.deb
+*.tar.gz
+*.tar.xz
+*.tar.bz2
+*.AppImage
+*.squashfs
+*.asar
+*.node
+*.so
+*.so.*
+*.a
+*.o
+*.rlib
+*.rmeta
+ccswitch-lite/ccswitch-lite
+zcode-tauri/packaging/send_wm_delete
+
+# Runtime / logs / caches
+logs/
+*.log
+*.pid
+*.bak
+*.bak.*
+.cache/
+node_modules/
+npm-debug.log*
+*.tsbuildinfo
+
+# Downloaded registry metadata / package caches
+*-packument.json
+narb.json
+oc.json
+unofficial-index.json
+providers.json
+
+# Secrets and machine-local state
+cookies.txt
+.env
+.env.*
+*.pem
+*.key
+*.crt
+.ssh/
+.netrc
+.netrc.*
+auth.json
+.claude/
+.codex/
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Temporary staging
+/tmp/

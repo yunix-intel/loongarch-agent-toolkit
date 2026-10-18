@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ZCode</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: flex; align-items: center; justify-content: center;
+      background: #111318; color: #e6e8ee;
+      font-family: "Noto Sans CJK SC", "Source Han Sans SC", system-ui, sans-serif;
+    }
+    .card { max-width: 520px; padding: 32px 40px; text-align: center; }
+    .logo {
+      width: 64px; height: 64px; margin: 0 auto 18px;
+      border-radius: 16px; background: linear-gradient(135deg, #6d5efc, #22b8cf);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 30px; font-weight: 700; color: #fff;
+    }
+    h1 { font-size: 20px; font-weight: 600; margin: 0 0 10px; }
+    p { font-size: 14px; line-height: 1.7; color: #a6adba; margin: 0; }
+    code { color: #d0bfff; }
+    .spinner {
+      width: 22px; height: 22px; margin: 22px auto 0;
+      border: 2px solid #2c3140; border-top-color: #6d5efc;
+      border-radius: 50%; animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="logo">Z</div>
+    <h1>正在启动 ZCode…</h1>
+    <p>
+      桌面外壳正在拉起 <code>zcode --web</code> 后端并等待其端口就绪。<br>
+      若长时间停留在此页面，说明后端启动失败，请查看
+      <code>/tmp/zcode-tauri.log</code>。
+    </p>
+    <div class="spinner"></div>
+  </main>
+</body>
+</html>

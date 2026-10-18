@@ -1,0 +1,12 @@
+#!/bin/sh
+HERE="$(dirname "$(readlink -f "$0")")"
+export LD_LIBRARY_PATH="$HERE/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+APP="$HERE/usr/lib/claude-desktop/claude-desktop"
+if [ "$(id -u)" = "0" ]; then
+  set -- --no-sandbox "$@"
+elif [ -r /proc/sys/kernel/unprivileged_userns_clone ] && [ "$(cat /proc/sys/kernel/unprivileged_userns_clone)" = "0" ]; then
+  set -- --no-sandbox "$@"
+elif [ -r /proc/sys/user/max_user_namespaces ] && [ "$(cat /proc/sys/user/max_user_namespaces)" = "0" ]; then
+  set -- --no-sandbox "$@"
+fi
+exec "$APP" "$@"

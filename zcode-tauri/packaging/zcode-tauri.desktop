@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=ZCode
+Comment=ZCode AI coding assistant (lightweight Tauri shell)
+Exec=/usr/bin/zcode-tauri
+Icon=/usr/share/icons/hicolor/scalable/apps/zcode-tauri.svg
+Terminal=false
+Categories=Development;Utility;
+StartupNotify=true

@@ -1,0 +1,60 @@
+name: ccswitch-lite
+
+on:
+  push:
+    paths:
+      - "ccswitch-lite/**"
+      - "install/**"
+      - ".github/workflows/ccswitch-lite.yml"
+  pull_request:
+    paths:
+      - "ccswitch-lite/**"
+      - "install/**"
+      - ".github/workflows/ccswitch-lite.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Go build (linux/loong64)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ccswitch-lite
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ccswitch-lite/go.mod
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Cross-build for loong64
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: loong64
+        run: go build -trimpath -ldflags "-s -w" -o ccswitch-lite .
+
+      - name: Inspect binary
+        run: file ccswitch-lite
+
+  shellcheck:
+    name: Shellcheck install scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Check installer and wrappers
+        run: |
+          shellcheck -s sh install/install-loongarch-agents.sh
+          shellcheck -s sh install/codex install/dsh install/opencode

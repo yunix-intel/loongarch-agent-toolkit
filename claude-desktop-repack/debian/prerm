@@ -1,0 +1,4 @@
+#!/bin/sh
+set -e
+rm -f /usr/share/mime/packages/com.anthropic.Claude.xml || true
+exit 0

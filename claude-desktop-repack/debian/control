@@ -1,0 +1,14 @@
+Package: claude-desktop
+Version: 2.42304.0~loong64.1
+Section: utils
+Priority: optional
+Architecture: loong64
+Depends: libgtk-3-0, libnotify4, libnss3, xdg-utils, libatspi2.0-0, libdrm2, libgbm1, libxcb-dri3-0, libsecret-1-0, libc6 (>= 2.34), libxtst6, libuuid1, libpipewire-0.3-0
+Recommends: libasound2 | libasound2t64, ca-certificates, gnome-keyring
+Installed-Size: 676452
+Maintainer: loong64 unofficial repack <root@localhost>
+Homepage: https://claude.ai
+Description: Claude Desktop for LoongArch (unofficial repack)
+ Desktop application for Claude.ai, repacked for loongarch64 using the
+ electron-loong64 Electron 43.7.7 runtime and the official amd64 2.42304.0
+ application payload. Not affiliated with Anthropic.

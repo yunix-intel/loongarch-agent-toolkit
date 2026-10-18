@@ -1,0 +1,10 @@
+# Keep scripts and source LF even on Windows checkouts.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.gz binary
+*.xz binary
+*.deb binary

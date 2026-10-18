@@ -1,0 +1,15 @@
+#!/bin/sh
+export PATH=/opt/node24/bin:$PATH
+
+# Headless/VM fallback: the Loongnix EGL vendor libraries (loonggpu/gsgpu)
+# cannot create a software EGL display under Xvfb.  Set
+# ZCODE_TAURI_SOFTWARE_GL=1 to force Mesa llvmpipe instead.
+if [ "${ZCODE_TAURI_SOFTWARE_GL:-0}" = "1" ]; then
+    export __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json
+    export LIBGL_DRIVERS_PATH=/usr/lib/loongarch64-linux-gnu/dri
+    export LIBGL_ALWAYS_SOFTWARE=1
+    export GALLIUM_DRIVER=llvmpipe
+    export WEBKIT_DISABLE_DMABUF_RENDERER=1
+fi
+
+exec /usr/lib/zcode-tauri/zcode-tauri "$@"

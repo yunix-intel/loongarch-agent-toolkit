@@ -1,0 +1,27 @@
+zcode-tauri — ZCode Web UI 的轻量 Tauri 2 外壳
+
+安装内容
+  /usr/lib/zcode-tauri/zcode-tauri   原生 LoongArch 二进制（约 5 MB）
+  /opt/zcode-tauri/dist/             加载/错误页
+  /usr/bin/zcode-tauri               启动器
+  /usr/share/applications/zcode-tauri.desktop
+
+运行依赖
+  ZCode 3.15.1 需已安装在 /usr/local/bin/zcode（其自身会使用 /opt/node24）。
+  本包不包含 Node/Electron，也不复制 ZCode 文件。
+
+行为
+  启动时执行 `zcode --web --no-open`，从 stdout 解析类似
+  "Local: http://127.0.0.1:36191/" 的动态地址，最多等待 30 秒；
+  TCP 端口就绪后创建 1200x800 的 WebKitGTK 窗口。
+  窗口关闭时仅终止本进程创建的进程组，不影响用户自己启动的 zcode。
+
+环境变量
+  ZCODE_BIN        覆盖 zcode 可执行文件路径
+  ZCODE_WEB_URL    连接已运行的 Web UI（不启动新后端）
+  ZCODE_TAURI_LOG  日志路径，默认 /tmp/zcode-tauri.log
+  ZCODE_TAURI_SOFTWARE_GL=1
+                   无 GPU/无头环境（Xvfb）下强制 Mesa llvmpipe 软件渲染
+
+命令行
+  zcode-tauri
