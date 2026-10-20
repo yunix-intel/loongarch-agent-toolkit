@@ -1,0 +1,73 @@
+name: agent-version-watch
+
+# Daily check of the agent versions pinned by install/install-loongarch-agents.sh
+# against the upstream npm registry and the Loongnix registry.
+#
+# This runs on GitHub-hosted ubuntu-latest, so it needs no loong64 runner.
+# It only reports: it never edits the installer, never installs anything, and
+# never changes the version pins.
+
+on:
+  schedule:
+    # 02:17 UTC daily (off the hour to avoid the cron rush).
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: agent-version-watch
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check Codex / OpenCode / DSH versions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare pins with registries
+        id: check
+        env:
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: bash .github/scripts/check-agent-versions.sh
+
+      - name: Create or update issue
+        if: steps.check.outputs.needs_issue == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh label create agent-update \
+            --color 0e8a16 \
+            --description "Automated agent version watch" 2>/dev/null || true
+
+          title="[agent-update] Codex/OpenCode/DSH version check $(date -u +%F)"
+          number=$(gh issue list --label agent-update --state open --limit 1 \
+            --json number --jq '.[0].number // empty')
+
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --title "$title" --body-file issue-body.md
+            echo "issue=#${number} (updated)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            url=$(gh issue create --title "$title" --body-file issue-body.md \
+              --label agent-update)
+            echo "issue=${url} (created)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Write step summary
+        if: always()
+        run: |
+          {
+            echo "## Agent version check $(date -u +%F)"
+            echo
+            if [ -f version-table.md ]; then
+              cat version-table.md
+            else
+              echo "Version check did not produce a table; see the job log."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

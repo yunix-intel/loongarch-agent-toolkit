@@ -31,7 +31,7 @@ zcode-tauri/            Tauri 2 source, frontend loading page, packaging
 install/                Agent installer + reference wrappers
 claude-desktop-repack/  Repack scripts and Debian metadata (no app payload)
 docs/                   ABI/Node, cc-switch port, Tauri, screenshots
-.github/workflows/      ccswitch-lite build + shellcheck CI
+.github/workflows/      ccswitch-lite build + shellcheck CI, agent version watch
 ```
 
 ## Prerequisites
@@ -119,6 +119,38 @@ Override versions with `NODE_VERSION`, `CODEX_VERSION`, `OPENCODE_VERSION`,
 
 Why ABI matters, and why Node 22.16 silently does nothing for `dsh`, is
 documented in [`docs/abi-and-node.md`](docs/abi-and-node.md).
+
+## Agent version watch
+
+[`.github/workflows/agent-version-watch.yml`](.github/workflows/agent-version-watch.yml)
+runs daily at 02:17 UTC (and on demand) on GitHub-hosted `ubuntu-latest`, so it
+needs no loong64 runner. It compares the pins in
+`install/install-loongarch-agents.sh` with the upstream npm registry and with
+the Loongnix registry (`https://registry.loongnix.cn:5873`), taking loong64
+builds only (`@openai/codex` versions ending in `-linux-loong64`,
+`opencode-linux-loong64`, and `@deepseek-ai/dsh`), and reports:
+
+| 工具 | 已 pin | 上游 latest | loong64 可用 latest | 状态 |
+| --- | --- | --- | --- | --- |
+
+Status is `可升级`, `等待移植`, `已最新` or `需人工确认`. When anything is
+actionable the workflow creates or updates the single open issue labeled
+[`agent-update`](https://github.com/yunix-intel/loongarch-agent-toolkit/issues?q=label%3Aagent-update),
+mentioning `@yunix-intel` with the table and the exact `CODEX_VERSION=...`
+`OPENCODE_VERSION=...` / `DSH_VERSION=...` install command. When everything is
+current it only writes the job step summary and opens no issue. The workflow
+never edits the pins and never installs anything.
+
+Trigger it manually and inspect the result:
+
+```sh
+gh workflow run agent-version-watch.yml
+gh run list --workflow=agent-version-watch.yml --limit 1
+gh run view <run-id> --log        # or: gh run view <run-id> --web
+```
+
+The step summary (table + status) is on the run page; actionable results are
+tracked in the `agent-update` issue, not in the run log.
 
 ## Claude Desktop repack
 
