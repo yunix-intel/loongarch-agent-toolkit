@@ -38,7 +38,7 @@ start)
   mkdir -p "$HOME/.config/Claude" "$HOME/.config/Claude-3p" "$HOME/logs"
   # Reuse harmless first-launch metadata so the app does not treat this as a
   # brand-new install. This reads the real config but never writes to it.
-  cp "${REAL_CLAUDE_CONFIG:-/root/.config/Claude/config.json}" "$HOME/.config/Claude/config.json" 2>/dev/null || true
+  cp "${REAL_CLAUDE_CONFIG:-$HOME/.config/Claude/config.json}" "$HOME/.config/Claude/config.json" 2>/dev/null || true
   mkdir -p "$HOME/.config/Claude-3p/configLibrary"
 
   "$BIN" add --name mock --base-url http://127.0.0.1:18080/v1 --api-key test-key \
