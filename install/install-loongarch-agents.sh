@@ -26,7 +26,7 @@
 #   NODE_PREFIX=/opt/node22-abi2
 #   NPM_REGISTRY=https://registry.loongnix.cn:5873
 #   CODEX_VERSION=0.162.0
-#   OPENCODE_VERSION=1.17.11
+#   OPENCODE_VERSION=1.19.0
 #   DSH_VERSION=latest
 #   BIN_DIR=/usr/local/bin
 #   NODE_URL=<explicit tarball URL>
@@ -51,7 +51,7 @@ NODE_VERSION=${NODE_VERSION:-22.23.3}
 NODE_PREFIX=${NODE_PREFIX:-/opt/node22-abi2}
 NPM_REGISTRY=${NPM_REGISTRY:-https://registry.loongnix.cn:5873}
 CODEX_VERSION=${CODEX_VERSION:-0.162.0}
-OPENCODE_VERSION=${OPENCODE_VERSION:-1.17.11}
+OPENCODE_VERSION=${OPENCODE_VERSION:-1.19.0}
 DSH_VERSION=${DSH_VERSION:-latest}
 BIN_DIR=${BIN_DIR:-/usr/local/bin}
 NODE_URL=${NODE_URL:-https://github.com/loong64/node/releases/download/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-loong64.tar.xz}
