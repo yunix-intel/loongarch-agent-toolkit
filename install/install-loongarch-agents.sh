@@ -21,23 +21,53 @@
 # Usage:
 #   sudo ./install-loongarch-agents.sh
 #
-# Overridable environment:
-#   NODE_VERSION=22.23.3
+# Versions:
+#   install/versions.env is the single source of truth.  The values below are
+#   only fallbacks used when that file is missing (e.g. the script is copied
+#   standalone); CI keeps them in sync with versions.env.
+#
+# Overridable environment (environment variables win over versions.env):
+#   NODE_VERSION=<from versions.env>
 #   NODE_PREFIX=/opt/node22-abi2
 #   NPM_REGISTRY=https://registry.loongnix.cn:5873
-#   CODEX_VERSION=0.162.0
-#   OPENCODE_VERSION=1.19.0
-#   DSH_VERSION=latest
+#   VERSIONS_FILE=<path to versions.env>
+#   CODEX_VERSION=<from versions.env>
+#   OPENCODE_VERSION=<from versions.env>
+#   DSH_VERSION=<from versions.env>
 #   BIN_DIR=/usr/local/bin
 #   NODE_URL=<explicit tarball URL>
 #   ALLOW_ABI1=1   # force installation on an ABI1.0 userspace (not recommended)
 
 set -eu
 
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+VERSIONS_FILE=${VERSIONS_FILE:-$SCRIPT_DIR/versions.env}
+
 log() { printf '==> %s\n' "$*"; }
 warn() { printf 'warning: %s\n' "$*" >&2; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"; }
+
+# Read KEY=VALUE from versions.env without executing the file.  $1 is the key
+# and $2 the fallback used when the manifest is absent or has no such key.
+manifest_get() {
+    key=$1
+    fallback=$2
+    value=''
+    if [ -f "$VERSIONS_FILE" ]; then
+        value=$(sed -n "s/^[[:space:]]*${key}=//p" "$VERSIONS_FILE" | head -n 1 | tr -d '\r')
+    else
+        warn "version manifest not found: $VERSIONS_FILE (using built-in fallbacks)"
+    fi
+    printf '%s' "${value:-$fallback}"
+}
+
+# BEGIN VERSION FALLBACKS -- kept in sync with install/versions.env by CI.
+NODE_VERSION_DEFAULT=22.23.3
+CODEX_VERSION_DEFAULT=0.162.0
+OPENCODE_VERSION_DEFAULT=1.19.0
+DSH_VERSION_DEFAULT=0.2.1-rc.2
+# END VERSION FALLBACKS
 
 [ "$(id -u)" -eq 0 ] || die "run as root: sudo $0"
 
@@ -47,12 +77,12 @@ case "$ARCH" in
     *) die "this script targets LoongArch, got: $ARCH" ;;
 esac
 
-NODE_VERSION=${NODE_VERSION:-22.23.3}
+NODE_VERSION=${NODE_VERSION:-$(manifest_get NODE_VERSION "$NODE_VERSION_DEFAULT")}
 NODE_PREFIX=${NODE_PREFIX:-/opt/node22-abi2}
 NPM_REGISTRY=${NPM_REGISTRY:-https://registry.loongnix.cn:5873}
-CODEX_VERSION=${CODEX_VERSION:-0.162.0}
-OPENCODE_VERSION=${OPENCODE_VERSION:-1.19.0}
-DSH_VERSION=${DSH_VERSION:-latest}
+CODEX_VERSION=${CODEX_VERSION:-$(manifest_get CODEX_VERSION "$CODEX_VERSION_DEFAULT")}
+OPENCODE_VERSION=${OPENCODE_VERSION:-$(manifest_get OPENCODE_VERSION "$OPENCODE_VERSION_DEFAULT")}
+DSH_VERSION=${DSH_VERSION:-$(manifest_get DSH_VERSION "$DSH_VERSION_DEFAULT")}
 BIN_DIR=${BIN_DIR:-/usr/local/bin}
 NODE_URL=${NODE_URL:-https://github.com/loong64/node/releases/download/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-loong64.tar.xz}
 
@@ -67,8 +97,6 @@ case "$NODE_PREFIX" in
     /*) ;;
     *) die "NODE_PREFIX must be an absolute path: $NODE_PREFIX" ;;
 esac
-
-SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 
 elf_flags() {
     LC_ALL=C readelf -h "$1" 2>/dev/null \

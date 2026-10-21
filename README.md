@@ -110,36 +110,69 @@ The installer:
 - detects ABI from ELF `e_flags` (`0x3` = ABI1.0, `0x43` = ABI2.0);
 - downloads Node **22.23.3** from `loong64/node` (not the ABI1.0 Loongnix FTP
   22.16 tarball) into `/opt/node22-abi2`;
-- installs `@openai/codex@0.162.0`, `opencode-ai@1.17.11` and the latest
-  `@deepseek-ai/dsh` from `https://registry.loongnix.cn:5873`;
+- installs `@openai/codex`, `opencode-ai` and `@deepseek-ai/dsh` at the versions
+  in [`install/versions.env`](install/versions.env) from
+  `https://registry.loongnix.cn:5873`;
 - writes `/usr/local/bin/{codex,dsh,opencode}` wrappers.
 
-Override versions with `NODE_VERSION`, `CODEX_VERSION`, `OPENCODE_VERSION`,
-`DSH_VERSION`, or the prefix with `NODE_PREFIX`. The system Node is untouched.
+[`install/versions.env`](install/versions.env) is the **single source of
+truth** for every pinned version. The installer reads it at runtime, and the
+README table below is generated/checked against it (CI fails on drift).
+Environment variables (`NODE_VERSION`, `CODEX_VERSION`, `OPENCODE_VERSION`,
+`DSH_VERSION`, `VERSIONS_FILE`) still override the manifest; `NODE_PREFIX`
+overrides the install prefix. The system Node is untouched.
+
+<!-- agent-versions:begin -->
+| 工具 | selected | 说明 |
+| --- | --- | --- |
+| Node.js | `22.23.3` | ABI2.0 运行时，来自 `loong64/node` |
+| Codex | `0.162.0` | 龙芯 loong64 可用最新版（非上游 latest） |
+| OpenCode | `1.19.0` | `opencode-linux-loong64` 最新版 |
+| DSH | `0.2.1-rc.2` | Loongnix registry 最新版 |
+| Claude Code | `2.1.112` | 最后一个 npm tarball 仍带 `cli.js` 的版本 |
+| ZCode | `v3.15.1` | `zai-org/ZCode` 最新 semver tag（非 GitHub release） |
+| cc-switch | `v4.0.17` | `farion1231/cc-switch` 最新 release |
+<!-- agent-versions:end -->
+
+`selected` 的含义是“当前龙芯上可用的最新版”，不一定是上游 latest。版本
+选择规则、Claude Code native-only 的处理和 ZCode 为什么跟 tag 而不是
+release，见 [`docs/version-policy.md`](docs/version-policy.md)。
 
 Why ABI matters, and why Node 22.16 silently does nothing for `dsh`, is
 documented in [`docs/abi-and-node.md`](docs/abi-and-node.md).
 
-## Agent version watch
+## Agent version watch and alignment
 
 [`.github/workflows/agent-version-watch.yml`](.github/workflows/agent-version-watch.yml)
 runs daily at 02:17 UTC (and on demand) on GitHub-hosted `ubuntu-latest`, so it
-needs no loong64 runner. It compares the pins in
-`install/install-loongarch-agents.sh` with the upstream npm registry and with
-the Loongnix registry (`https://registry.loongnix.cn:5873`), taking loong64
-builds only (`@openai/codex` versions ending in `-linux-loong64`,
-`opencode-linux-loong64`, and `@deepseek-ai/dsh`), and reports:
+needs no loong64 runner. It reads `install/versions.env`, queries:
 
-| 工具 | 已 pin | 上游 latest | loong64 可用 latest | 状态 |
-| --- | --- | --- | --- | --- |
+- upstream npm `latest` for Codex, OpenCode, DSH and Claude Code;
+- Loongnix `loong64` builds (`@openai/codex` `-linux-loong64` versions,
+  `opencode-linux-loong64`, `@deepseek-ai/dsh`);
+- the Claude Code npm tarball for the newest version that still contains
+  `cli.js` (2.1.113+ are native-only);
+- `zai-org/ZCode` tags **and** releases (tags are authoritative);
+- `farion1231/cc-switch` latest release;
+- optionally, source-built Codex releases in the private
+  `yunix-intel/loongarch-agent-builds` repository (only when a token that can
+  read it is available; the check is best-effort).
 
-Status is `可升级`, `等待移植`, `已最新` or `需人工确认`. When anything is
-actionable the workflow creates or updates the single open issue labeled
-[`agent-update`](https://github.com/yunix-intel/loongarch-agent-toolkit/issues?q=label%3Aagent-update),
-mentioning `@yunix-intel` with the table and the exact `CODEX_VERSION=...`
-`OPENCODE_VERSION=...` / `DSH_VERSION=...` install command. When everything is
-current it only writes the job step summary and opens no issue. The workflow
-never edits the pins and never installs anything.
+It then writes a table with `upstream / loong64 可用 / selected / 状态` and
+creates or updates the single open issue labeled
+[`agent-update`](https://github.com/yunix-intel/loongarch-agent-toolkit/issues?q=label%3Aagent-update).
+
+**Automatic alignment:** when `selected` differs from `install/versions.env`,
+the workflow updates the manifest, the installer fallback block and the README
+table, pushes to the `auto/version-alignment` branch and opens (or updates a)
+pull request whose body lists every change. It never commits to `main`, never
+merges, never installs and never publishes. When nothing is selectable it only
+updates the issue and opens no PR. Statuses such as
+`waiting-for-loong64-port` mean upstream is ahead but no loong64 build exists
+yet.
+
+CI also runs `.github/scripts/check-versions-consistency.sh`, which fails if
+`versions.env`, the installer fallbacks and the README table disagree.
 
 Trigger it manually and inspect the result:
 
@@ -150,7 +183,10 @@ gh run view <run-id> --log        # or: gh run view <run-id> --web
 ```
 
 The step summary (table + status) is on the run page; actionable results are
-tracked in the `agent-update` issue, not in the run log.
+tracked in the `agent-update` issue, and proposed bumps in the auto-alignment
+PR. Note that branches/PRs created with the default `GITHUB_TOKEN` do not
+re-trigger `pull_request` workflows; the alignment job therefore runs the
+consistency check itself before committing.
 
 ## Claude Desktop repack
 

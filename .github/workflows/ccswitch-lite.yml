@@ -5,11 +5,15 @@ on:
     paths:
       - "ccswitch-lite/**"
       - "install/**"
+      - "README.md"
+      - ".github/scripts/**"
       - ".github/workflows/ccswitch-lite.yml"
   pull_request:
     paths:
       - "ccswitch-lite/**"
       - "install/**"
+      - "README.md"
+      - ".github/scripts/**"
       - ".github/workflows/ccswitch-lite.yml"
 
 permissions:
@@ -58,3 +62,14 @@ jobs:
         run: |
           shellcheck -s sh install/install-loongarch-agents.sh
           shellcheck -s sh install/codex install/dsh install/opencode
+          shellcheck -s bash .github/scripts/check-agent-versions.sh
+          shellcheck -s bash .github/scripts/check-versions-consistency.sh
+
+  versions:
+    name: Version manifest consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check versions.env against installer and README
+        run: bash .github/scripts/check-versions-consistency.sh

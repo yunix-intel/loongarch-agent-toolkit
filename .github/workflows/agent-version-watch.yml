@@ -1,21 +1,31 @@
 name: agent-version-watch
 
-# Daily check of the agent versions pinned by install/install-loongarch-agents.sh
-# against the upstream npm registry and the Loongnix registry.
+# Daily check + automatic alignment of the agent versions pinned in
+# install/versions.env.
 #
-# This runs on GitHub-hosted ubuntu-latest, so it needs no loong64 runner.
-# It only reports: it never edits the installer, never installs anything, and
-# never changes the version pins.
+# selected = the newest version actually usable on LoongArch, which is not
+# always the upstream latest (see docs/version-policy.md).
+#
+# The workflow runs on GitHub-hosted ubuntu-latest, never installs anything and
+# never commits to main.  When a newer usable version exists it updates the
+# manifest/installer/README on the auto/version-alignment branch and opens (or
+# updates) a pull request.  Otherwise it only refreshes the tracking issue.
 
 on:
   schedule:
     # 02:17 UTC daily (off the hour to avoid the cron rush).
     - cron: "17 2 * * *"
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only report; do not push the alignment branch or open a PR"
+        type: boolean
+        default: false
 
 permissions:
-  contents: read
+  contents: write
   issues: write
+  pull-requests: write
 
 concurrency:
   group: agent-version-watch
@@ -23,40 +33,104 @@ concurrency:
 
 jobs:
   check:
-    name: Check Codex / OpenCode / DSH versions
+    name: Check and align agent versions
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Compare pins with registries
+      - name: Compute selected versions and apply alignment
         id: check
         env:
           GITHUB_SERVER_URL: ${{ github.server_url }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}
-        run: bash .github/scripts/check-agent-versions.sh
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUILDS_REPO_TOKEN: ${{ secrets.BUILDS_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Prefer a token that can read the private builds repository when the
+          # optional secret is configured; otherwise GITHUB_TOKEN is used and
+          # the source-build lookup is simply skipped on 404.
+          if [ -n "${BUILDS_REPO_TOKEN:-}" ]; then
+            export GH_TOKEN="$BUILDS_REPO_TOKEN"
+          fi
+          bash .github/scripts/check-agent-versions.sh
+
+      - name: Check manifest / installer / README consistency
+        run: bash .github/scripts/check-versions-consistency.sh
 
       - name: Create or update issue
-        if: steps.check.outputs.needs_issue == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WAITING_PORT: ${{ steps.check.outputs.waiting_port }}
         run: |
           set -euo pipefail
           gh label create agent-update \
             --color 0e8a16 \
             --description "Automated agent version watch" 2>/dev/null || true
+          gh label create waiting-for-loong64-port \
+            --color fbca04 \
+            --description "Upstream is ahead but no LoongArch build exists yet" 2>/dev/null || true
 
-          title="[agent-update] Codex/OpenCode/DSH version check $(date -u +%F)"
+          title="[agent-update] Agent 版本检查 $(date -u +%F)"
           number=$(gh issue list --label agent-update --state open --limit 1 \
             --json number --jq '.[0].number // empty')
 
           if [ -n "$number" ]; then
-            gh issue edit "$number" --title "$title" --body-file issue-body.md
+            gh issue edit "$number" --title "$title" --body-file issue-body.md \
+              --add-label agent-update
+            if [ "$WAITING_PORT" = true ]; then
+              gh issue edit "$number" --add-label waiting-for-loong64-port
+            else
+              gh issue edit "$number" --remove-label waiting-for-loong64-port 2>/dev/null || true
+            fi
             echo "issue=#${number} (updated)" >> "$GITHUB_STEP_SUMMARY"
           else
-            url=$(gh issue create --title "$title" --body-file issue-body.md \
-              --label agent-update)
+            if [ "$WAITING_PORT" = true ]; then
+              url=$(gh issue create --title "$title" --body-file issue-body.md \
+                --label agent-update --label waiting-for-loong64-port)
+            else
+              url=$(gh issue create --title "$title" --body-file issue-body.md \
+                --label agent-update)
+            fi
             echo "issue=${url} (created)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Open or update alignment PR
+        if: steps.check.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          if [ "${DRY_RUN:-false}" = "true" ]; then
+            echo "dry_run=true: skipping branch push and PR creation" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B auto/version-alignment
+          git add install/versions.env install/install-loongarch-agents.sh README.md
+          if git diff --cached --quiet; then
+            echo "nothing to commit" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git commit -m "chore: align agent versions with available LoongArch builds"
+          git push --force-with-lease origin auto/version-alignment
+
+          pr_title="chore: align agent versions ($(date -u +%F))"
+          number=$(gh pr list --head auto/version-alignment --state open --limit 1 \
+            --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh pr edit "$number" --title "$pr_title" --body-file changes.md
+            echo "pr=#${number} (updated)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            url=$(gh pr create --base main --head auto/version-alignment \
+              --title "$pr_title" --body-file changes.md)
+            echo "pr=${url} (created)" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Write step summary
@@ -69,5 +143,11 @@ jobs:
               cat version-table.md
             else
               echo "Version check did not produce a table; see the job log."
+            fi
+            echo
+            if [ -f changes.md ]; then
+              echo "Alignment changes were prepared; see the auto/version-alignment PR."
+            else
+              echo "No alignment changes: no PR created."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
