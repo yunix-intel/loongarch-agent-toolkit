@@ -21,6 +21,10 @@ on:
         description: "Only report; do not push the alignment branch or open a PR"
         type: boolean
         default: false
+      base:
+        description: "PR base branch (default main; point at a drill branch for testing)"
+        type: string
+        default: main
 
 permissions:
   contents: write
@@ -103,6 +107,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DRY_RUN: ${{ inputs.dry_run }}
+          BASE_REF: ${{ inputs.base || 'main' }}
         run: |
           set -euo pipefail
           if [ "${DRY_RUN:-false}" = "true" ]; then
@@ -128,7 +133,7 @@ jobs:
             gh pr edit "$number" --title "$pr_title" --body-file changes.md
             echo "pr=#${number} (updated)" >> "$GITHUB_STEP_SUMMARY"
           else
-            url=$(gh pr create --base main --head auto/version-alignment \
+            url=$(gh pr create --base "$BASE_REF" --head auto/version-alignment \
               --title "$pr_title" --body-file changes.md)
             echo "pr=${url} (created)" >> "$GITHUB_STEP_SUMMARY"
           fi
