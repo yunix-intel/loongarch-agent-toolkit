@@ -51,14 +51,14 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BUILDS_REPO_TOKEN: ${{ secrets.BUILDS_REPO_TOKEN }}
+          AUTO_ALIGN_TOKEN: ${{ secrets.AUTO_ALIGN_TOKEN }}
         run: |
           set -euo pipefail
-          # Prefer a token that can read the private builds repository when the
-          # optional secret is configured; otherwise GITHUB_TOKEN is used and
-          # the source-build lookup is simply skipped on 404.
-          if [ -n "${BUILDS_REPO_TOKEN:-}" ]; then
-            export GH_TOKEN="$BUILDS_REPO_TOKEN"
+          # A PAT with access to the private builds repo lets the watch read
+          # draft releases and keeps the source URL/SHA in sync. Without it the
+          # script reports "source-private" and leaves the npm pin alone.
+          if [ -n "${AUTO_ALIGN_TOKEN:-}" ]; then
+            export GH_TOKEN="$AUTO_ALIGN_TOKEN"
           fi
           bash .github/scripts/check-agent-versions.sh
 

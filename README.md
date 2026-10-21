@@ -110,10 +110,13 @@ The installer:
 - detects ABI from ELF `e_flags` (`0x3` = ABI1.0, `0x43` = ABI2.0);
 - downloads Node **22.23.3** from `loong64/node` (not the ABI1.0 Loongnix FTP
   22.16 tarball) into `/opt/node22-abi2`;
-- installs `@openai/codex`, `opencode-ai` and `@deepseek-ai/dsh` at the versions
-  in [`install/versions.env`](install/versions.env) from
+- installs `opencode-ai` and `@deepseek-ai/dsh` at the versions in
+  [`install/versions.env`](install/versions.env) from
   `https://registry.loongnix.cn:5873`;
-- writes `/usr/local/bin/{codex,dsh,opencode}` wrappers.
+- installs Codex from either the npm channel (`@openai/codex`) or a local
+  source-build tarball, selected by `CODEX_CHANNEL`;
+- writes `/usr/local/bin/{codex,dsh,opencode}` wrappers (the source channel
+  writes `codex-<version>` unless `CODEX_LINK_DEFAULT=1`).
 
 [`install/versions.env`](install/versions.env) is the **single source of
 truth** for every pinned version. The installer reads it at runtime, and the
@@ -127,6 +130,7 @@ overrides the install prefix. The system Node is untouched.
 | --- | --- | --- |
 | Node.js | `22.23.3` | ABI2.0 运行时，来自 `loong64/node` |
 | Codex | `0.162.0` | 龙芯 loong64 可用最新版（非上游 latest） |
+| Codex (source) | `0.163.0` | 私有 builds 仓库的 LoongArch 源码构建（可选通道） |
 | OpenCode | `1.19.0` | `opencode-linux-loong64` 最新版 |
 | DSH | `0.2.1-rc.2` | Loongnix registry 最新版 |
 | Claude Code | `2.1.112` | 最后一个 npm tarball 仍带 `cli.js` 的版本 |
@@ -137,6 +141,25 @@ overrides the install prefix. The system Node is untouched.
 `selected` 的含义是“当前龙芯上可用的最新版”，不一定是上游 latest。版本
 选择规则、Claude Code native-only 的处理和 ZCode 为什么跟 tag 而不是
 release，见 [`docs/version-policy.md`](docs/version-policy.md)。
+
+### Codex: npm vs source
+
+`CODEX_CHANNEL=npm`（默认）安装 Loongnix registry 的
+`@openai/codex@CODEX_VERSION` 并写默认 `codex`。`CODEX_CHANNEL=source` 则把
+源码构建包解到 `/opt/codex-<CODEX_SOURCE_VERSION>`，写
+`/usr/local/bin/codex-<version>`；除非 `CODEX_LINK_DEFAULT=1`，**不会覆盖**
+默认 `codex`。
+
+```sh
+sudo CODEX_CHANNEL=source \
+  CODEX_SOURCE_URL=/path/to/codex-rust-v0.163.0-loongarch64.tar.gz \
+  CODEX_SOURCE_SHA256=acfeda1d8c6e98fee9d9935d97f94ed1ff9901236bb2cde7d7ffa517397a896d \
+  ./install/install-loongarch-agents.sh
+```
+
+`CODEX_SOURCE_URL` 支持 `http(s)://` 或本地 `.tar.gz`。私有 GitHub release
+资产需 `CODEX_SOURCE_TOKEN`（或 `GITHUB_TOKEN`）；安装器在解包前校验
+SHA-256，并拒绝包含绝对路径或 `..` 的条目。
 
 Why ABI matters, and why Node 22.16 silently does nothing for `dsh`, is
 documented in [`docs/abi-and-node.md`](docs/abi-and-node.md).
@@ -154,9 +177,12 @@ needs no loong64 runner. It reads `install/versions.env`, queries:
   `cli.js` (2.1.113+ are native-only);
 - `zai-org/ZCode` tags **and** releases (tags are authoritative);
 - `farion1231/cc-switch` latest release;
-- optionally, source-built Codex releases in the private
-  `yunix-intel/loongarch-agent-builds` repository (only when a token that can
-  read it is available; the check is best-effort).
+- source-built Codex releases (including drafts) in the private
+  `yunix-intel/loongarch-agent-builds` repository when `AUTO_ALIGN_TOKEN` can
+  read it; a newer build updates `CODEX_SOURCE_VERSION/URL/SHA256`, while
+  `CODEX_CHANNEL` stays `npm` unless changed by hand. Without the token the
+  issue reports `source build available (private; set AUTO_ALIGN_TOKEN or URL)`
+  and the npm pin is not touched.
 
 It then writes a table with `upstream / loong64 可用 / selected / 状态` and
 creates or updates the single open issue labeled

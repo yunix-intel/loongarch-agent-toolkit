@@ -12,7 +12,8 @@
 
 | 工具 | selected 来源 | 上游领先时的状态 |
 | --- | --- | --- |
-| Codex | Loongnix registry 中最新的 `@openai/codex-<ver>-linux-loong64`；若私有 builds 仓库有更高的源码构建 release，则取较高者（best-effort） | `waiting-for-loong64-port` |
+| Codex (npm) | Loongnix registry 中最新的 `@openai/codex-<ver>-linux-loong64` | `waiting-for-loong64-port` |
+| Codex (source) | 私有 builds 仓库中最新 `codex-rust-v<ver>-loongarch64.tar.gz`；仅在 `CODEX_CHANNEL=source` 时作为默认通道 | `source-private` / `source-available` |
 | OpenCode | `opencode-linux-loong64` 的 `latest` | `waiting-for-loong64-port` |
 | DSH | Loongnix registry 的 `@deepseek-ai/dsh@latest` | `waiting-upstream-sync` |
 | Claude Code | npm 上**最后一个仍包含 `cli.js`** 的版本 | `native-only` |
@@ -20,8 +21,31 @@
 | cc-switch | `farion1231/cc-switch` 的最新 GitHub release | `up-to-date` |
 
 只有当 Loongnix（或源码构建）真的产出了 loong64 版本，workflow 才会把
-selected 往上调。上游发了新版但没有 loong64 构建时，issue 会标注
-`waiting-for-loong64-port`，不会产生 PR。
+对应通道的 selected 往上调。上游发了新版但没有 loong64 构建时，issue 会标注
+`waiting-for-loong64-port`，不会产生 npm 升级 PR。
+
+## Codex 的 npm 与 source 通道
+
+`install/versions.env` 同时记录两条通道：
+
+- `CODEX_CHANNEL=npm|source`（默认 `npm`）；
+- `CODEX_VERSION`：npm 通道版本；
+- `CODEX_SOURCE_VERSION` / `CODEX_SOURCE_URL` / `CODEX_SOURCE_SHA256`：
+  源码构建的版本、资产 URL（可为空，安装时用环境变量补）和 SHA-256；
+- `CODEX_LINK_DEFAULT=0|1`：是否让默认 `codex` 也指向源码构建。
+
+安装器在 npm 通道仍安装 `@openai/codex@CODEX_VERSION`。source 通道把归档解到
+`/opt/codex-<version>`（可用 `CODEX_SOURCE_PREFIX` 改前缀），写
+`/usr/local/bin/codex-<version>`；只有 `CODEX_LINK_DEFAULT=1` 才覆盖默认
+`codex`。`CODEX_SOURCE_URL` 支持 `http(s)://` 或本地 `.tar.gz`；私有 GitHub
+release 资产需 `CODEX_SOURCE_TOKEN`（或 `GITHUB_TOKEN`），URL 用 API asset
+地址（draft release 不能用 `browser_download_url`）。解包前校验 SHA-256，
+并拒绝绝对路径/`..` 条目。
+
+`AUTO_ALIGN_TOKEN` 配置后，watch 会用该 token 读取 builds 仓库（含 draft
+release），发现更高版本时同步更新上述三个 source 字段；没有 token 时 issue
+标注 `source build available (private; set AUTO_ALIGN_TOKEN or URL)`，不会
+改动 npm pin。
 
 ## Claude Code：native-only 之后不再自动升级
 
@@ -77,7 +101,8 @@ cd ccswitch-lite && go test ./... && \
 0 个 job）。
 
 可选配置仓库 secret `AUTO_ALIGN_TOKEN`（一个 PAT，需具备 contents 与
-pull requests 写权限）。配置后 workflow 会用该 PAT 推送分支和创建/更新 PR，
-PR 作者是 PAT 所属用户，CI 会自动启动，不再需要每次批准。token 只通过环境
-变量传给 git/gh，不会写进仓库；不要把它提交到任何文件。
+pull requests 写权限，并能读取私有 builds 仓库）。配置后 workflow 会用该
+PAT 读取 draft release、推送分支和创建/更新 PR，PR 作者是 PAT 所属用户，
+CI 会自动启动，不再需要每次批准。token 只通过环境变量传给 git/gh，不会写进
+仓库；不要把它提交到任何文件。
 

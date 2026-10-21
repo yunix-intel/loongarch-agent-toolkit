@@ -37,6 +37,10 @@ CCSWITCH_REPO=${CCSWITCH_REPO:-farion1231/cc-switch}
 BUILDS_REPO=${BUILDS_REPO:-yunix-intel/loongarch-agent-builds}
 TODAY=${TODAY:-$(date -u +%Y-%m-%d)}
 TOKEN=${GH_TOKEN:-${GITHUB_TOKEN:-}}
+# Only an explicitly supplied GH_TOKEN (AUTO_ALIGN_TOKEN in CI) may read the
+# private builds repo.  The repo-scoped GITHUB_TOKEN cannot see it, so do not
+# use it for the source-build query.
+BUILDS_TOKEN=${GH_TOKEN:-}
 
 warn() { printf 'warning: %s\n' "$*" >&2; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
@@ -160,12 +164,36 @@ gh_api() {
     fi
 }
 
-codex_source_latest() {
-    [ -n "$TOKEN" ] || return 0
+gh_builds_api() {
+    GH_TOKEN="$BUILDS_TOKEN" gh api "$@"
+}
+
+# Newest source-built Codex release in the private builds repo.
+# Prints: version <TAB> asset API URL <TAB> sha256 <TAB> asset_name
+# Draft releases are included when the token can see them.  A token without
+# access yields nothing; the caller reports "private" instead of guessing.
+# The API asset URL (not browser_download_url) is used because draft releases
+# are only downloadable through the API with Accept: application/octet-stream.
+codex_source_release() {
+    [ -n "$BUILDS_TOKEN" ] || return 0
     command -v gh >/dev/null 2>&1 || return 0
-    gh_api "repos/$BUILDS_REPO/releases?per_page=50" \
-        --jq '.[].tag_name' 2>/dev/null \
-        | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' \
+    gh_builds_api "repos/$BUILDS_REPO/releases?per_page=100" \
+        --paginate \
+        --jq '.[] | .tag_name as $tag
+              | .assets[]?
+              | select(.name | test("codex.*loongarch64[.]tar[.]gz$"))
+              | [$tag, .url, (.digest // ""), .name]
+              | @tsv' 2>/dev/null \
+        | while IFS="$(printf '\t')" read -r tag url digest name; do
+            version=$(printf '%s' "$tag" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | tail -n 1)
+            [ -n "$version" ] || continue
+            sha=${digest#sha256:}
+            case "$sha" in
+                *[!0-9a-fA-F]*) continue ;;
+            esac
+            [ "${#sha}" -eq 64 ] || continue
+            printf '%s\t%s\t%s\t%s\n' "$version" "$url" "$sha" "$name"
+        done \
         | sort -V | tail -n 1 || true
 }
 
@@ -302,6 +330,10 @@ status_of() {
 # --------------------------------------------------------------------------
 
 CODEX_PIN=$(manifest_value CODEX_VERSION)
+CODEX_CHANNEL_PIN=$(manifest_value CODEX_CHANNEL)
+CODEX_SOURCE_PIN=$(manifest_value CODEX_SOURCE_VERSION)
+CODEX_SOURCE_URL_PIN=$(manifest_value CODEX_SOURCE_URL)
+CODEX_SOURCE_SHA_PIN=$(manifest_value CODEX_SOURCE_SHA256)
 OPENCODE_PIN=$(manifest_value OPENCODE_VERSION)
 DSH_PIN=$(manifest_value DSH_VERSION)
 CLAUDE_PIN=$(manifest_value CLAUDE_CODE_VERSION)
@@ -314,7 +346,11 @@ DSH_UP=$(npm_latest '@deepseek-ai%2Fdsh')
 CLAUDE_UP=$(npm_latest '@anthropic-ai%2Fclaude-code')
 
 CODEX_LOONG=$(codex_loong_latest)
-CODEX_SOURCE=$(codex_source_latest)
+CODEX_SOURCE_TSV=$(codex_source_release)
+CODEX_SOURCE_NEW=$(printf '%s' "$CODEX_SOURCE_TSV" | cut -f1)
+CODEX_SOURCE_NEW_URL=$(printf '%s' "$CODEX_SOURCE_TSV" | cut -f2)
+CODEX_SOURCE_NEW_SHA=$(printf '%s' "$CODEX_SOURCE_TSV" | cut -f3)
+CODEX_SOURCE_NEW_NAME=$(printf '%s' "$CODEX_SOURCE_TSV" | cut -f4)
 OPENCODE_LOONG=$(opencode_loong_latest)
 DSH_LOONG=$(dsh_loong_latest)
 CLAUDE_JS=$(claude_js_latest)
@@ -323,18 +359,49 @@ ZCODE_RELEASE=$(gh_latest_release "$ZCODE_REPO")
 ZCODE_TAGS=$(gh_tags "$ZCODE_REPO" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)
 CCSWITCH_RELEASE=$(gh_latest_release "$CCSWITCH_REPO")
 
-CODEX_SEL=$(version_max "$CODEX_LOONG" "$CODEX_SOURCE")
+# The npm channel stays the default and keeps tracking the loong64 port; the
+# source build is reported separately unless CODEX_CHANNEL=source.
+CODEX_SEL=$CODEX_LOONG
+if [ "$CODEX_CHANNEL_PIN" = "source" ]; then
+    CODEX_SEL=${CODEX_SOURCE_NEW:-$CODEX_SOURCE_PIN}
+fi
 OPENCODE_SEL=$OPENCODE_LOONG
 DSH_SEL=$DSH_LOONG
 CLAUDE_SEL=$CLAUDE_JS
 ZCODE_SEL=$ZCODE_TAGS
 CCSWITCH_SEL=$CCSWITCH_RELEASE
 
-CODEX_STATUS=$(status_of "$CODEX_PIN" "$CODEX_SEL" "$CODEX_UP" waiting-for-loong64-port)
+if [ "$CODEX_CHANNEL_PIN" = "source" ]; then
+    if [ -z "$CODEX_SEL" ]; then
+        CODEX_STATUS='query-failed'
+    elif version_gt "$CODEX_SEL" "$CODEX_SOURCE_PIN"; then
+        CODEX_STATUS='update-available'
+    else
+        CODEX_STATUS='source-selected'
+    fi
+else
+    CODEX_STATUS=$(status_of "$CODEX_PIN" "$CODEX_SEL" "$CODEX_UP" waiting-for-loong64-port)
+fi
 OPENCODE_STATUS=$(status_of "$OPENCODE_PIN" "$OPENCODE_SEL" "$OPENCODE_UP" waiting-for-loong64-port)
 DSH_STATUS=$(status_of "$DSH_PIN" "$DSH_SEL" "$DSH_UP" waiting-upstream-sync)
 CLAUDE_STATUS=$(status_of "$CLAUDE_PIN" "$CLAUDE_SEL" "$CLAUDE_UP" native-only)
 CCSWITCH_STATUS=$(status_of "$CCSWITCH_PIN" "$CCSWITCH_SEL" "$CCSWITCH_RELEASE" upstream-ahead)
+
+if [ -n "$CODEX_SOURCE_NEW" ]; then
+    if [ "$CODEX_CHANNEL_PIN" = "source" ]; then
+        CODEX_SOURCE_STATUS='selected'
+    else
+        CODEX_SOURCE_STATUS='source-available'
+    fi
+elif [ -n "$CODEX_SOURCE_PIN" ]; then
+    if [ -n "$BUILDS_TOKEN" ]; then
+        CODEX_SOURCE_STATUS='source-unavailable'
+    else
+        CODEX_SOURCE_STATUS='source-private'
+    fi
+else
+    CODEX_SOURCE_STATUS='unset'
+fi
 
 # ZCode is selected from tags, while "upstream" is the GitHub release.  Report
 # a release that lags its own tags even when the pin is already correct.
@@ -350,8 +417,10 @@ else
 fi
 
 CODEX_NOTE='龙芯 loong64 可用最新版'
-if [ -n "$CODEX_SOURCE" ] && [ "$CODEX_SEL" = "$CODEX_SOURCE" ] && version_gt "$CODEX_SOURCE" "$CODEX_LOONG"; then
-    CODEX_NOTE="源码构建 release ${CODEX_SOURCE}（高于 loong64 port ${CODEX_LOONG}）"
+if [ "$CODEX_CHANNEL_PIN" = "source" ]; then
+    CODEX_NOTE="源码通道 ${CODEX_SOURCE_PIN}"
+elif [ -n "$CODEX_SOURCE_NEW" ]; then
+    CODEX_NOTE="npm 默认；source ${CODEX_SOURCE_NEW} 可选"
 fi
 
 # --------------------------------------------------------------------------
@@ -364,6 +433,16 @@ fi
     printf '| Codex (`@openai/codex`) | %s | %s | %s | `%s` |\n' \
         "$(show_ver "$CODEX_UP")" "$(show_ver "$CODEX_LOONG")" \
         "$(show_ver "$CODEX_SEL")" "$CODEX_STATUS"
+    if [ -n "$CODEX_SOURCE_NEW" ]; then
+        SOURCE_PLATFORM='builds release'
+    elif [ -n "$CODEX_SOURCE_URL_PIN" ]; then
+        SOURCE_PLATFORM='URL set'
+    else
+        SOURCE_PLATFORM='private'
+    fi
+    printf '| Codex (source) | %s | %s | %s | `%s` |\n' \
+        "$(show_ver "${CODEX_SOURCE_NEW:-$CODEX_SOURCE_PIN}")" "$SOURCE_PLATFORM" \
+        "$(show_ver "${CODEX_SOURCE_NEW:-$CODEX_SOURCE_PIN}")" "$CODEX_SOURCE_STATUS"
     printf '| OpenCode (`opencode-ai`) | %s | %s | %s | `%s` |\n' \
         "$(show_ver "$OPENCODE_UP")" "$(show_ver "$OPENCODE_LOONG")" \
         "$(show_ver "$OPENCODE_SEL")" "$OPENCODE_STATUS"
@@ -398,12 +477,58 @@ consider() {
     fi
 }
 
-consider CODEX_VERSION '@openai/codex' "$CODEX_PIN" "$CODEX_SEL" "$CODEX_NOTE"
+consider CODEX_VERSION '@openai/codex' "$CODEX_PIN" "$CODEX_LOONG" "$CODEX_NOTE"
 consider OPENCODE_VERSION 'opencode-ai' "$OPENCODE_PIN" "$OPENCODE_SEL" 'opencode-linux-loong64 latest'
 consider DSH_VERSION '@deepseek-ai/dsh' "$DSH_PIN" "$DSH_SEL" 'Loongnix registry latest'
 consider CLAUDE_CODE_VERSION '@anthropic-ai/claude-code' "$CLAUDE_PIN" "$CLAUDE_SEL" 'newest tarball containing cli.js'
 consider ZCODE_TAG 'ZCode' "$ZCODE_PIN" "$ZCODE_SEL" 'newest semver tag'
 consider CC_SWITCH_VERSION 'cc-switch' "$CCSWITCH_PIN" "$CCSWITCH_SEL" 'latest GitHub release'
+
+set_manifest_value() {
+    local key=$1 value=$2 escaped
+    escaped=$(printf '%s' "$value" | sed 's/[&|\\]/\\&/g')
+    sed -i.bak "s|^[[:space:]]*${key}=.*|${key}=${escaped}|" "$MANIFEST"
+    rm -f "$MANIFEST.bak"
+}
+
+set_fallback_value() {
+    local key=$1 value=$2 escaped
+    escaped=$(printf '%s' "$value" | sed 's/[&|\\]/\\&/g')
+    sed -i.bak "s|^${key}_DEFAULT=.*|${key}_DEFAULT=${escaped}|" "$INSTALLER"
+    rm -f "$INSTALLER.bak"
+}
+
+# Codex source build: update the recorded version/URL/SHA when the private
+# builds release moves, even while the npm channel remains the default.
+SOURCE_CHANGED=0
+if [ -n "$CODEX_SOURCE_NEW" ]; then
+    if version_gt "$CODEX_SOURCE_NEW" "$CODEX_SOURCE_PIN"; then
+        SOURCE_CHANGED=1
+        SOURCE_OLD=$CODEX_SOURCE_PIN
+        SOURCE_NEW=$CODEX_SOURCE_NEW
+        SOURCE_REASON="builds release ${CODEX_SOURCE_NEW_NAME:-$CODEX_SOURCE_NEW}"
+    elif [ "$CODEX_SOURCE_NEW" = "$CODEX_SOURCE_PIN" ]; then
+        if [ "$CODEX_SOURCE_NEW_URL" != "$CODEX_SOURCE_URL_PIN" ] \
+            || [ "$CODEX_SOURCE_NEW_SHA" != "$CODEX_SOURCE_SHA_PIN" ]; then
+            SOURCE_CHANGED=1
+            SOURCE_OLD='stale URL/SHA'
+            SOURCE_NEW='refreshed'
+            SOURCE_REASON="builds release ${CODEX_SOURCE_NEW_NAME:-$CODEX_SOURCE_NEW}"
+        fi
+    fi
+fi
+
+if [ "$SOURCE_CHANGED" -eq 1 ]; then
+    CHANGED=1
+    set_manifest_value CODEX_SOURCE_VERSION "$CODEX_SOURCE_NEW"
+    set_manifest_value CODEX_SOURCE_URL "$CODEX_SOURCE_NEW_URL"
+    set_manifest_value CODEX_SOURCE_SHA256 "$CODEX_SOURCE_NEW_SHA"
+    set_fallback_value CODEX_SOURCE_VERSION "$CODEX_SOURCE_NEW"
+    set_fallback_value CODEX_SOURCE_URL "$CODEX_SOURCE_NEW_URL"
+    set_fallback_value CODEX_SOURCE_SHA256 "$CODEX_SOURCE_NEW_SHA"
+    printf 'CODEX_SOURCE\tCodex source\t%s\t%s\t%s\n' \
+        "$SOURCE_OLD" "$SOURCE_NEW" "$SOURCE_REASON" >> "$TMP/changes.tsv"
+fi
 
 # README block, rendered from the manifest (after updates).
 render_readme_block() {
@@ -412,6 +537,7 @@ render_readme_block() {
     printf '| --- | --- | --- |\n'
     printf '| Node.js | `%s` | ABI2.0 运行时，来自 `loong64/node` |\n' "$(manifest_value NODE_VERSION)"
     printf '| Codex | `%s` | 龙芯 loong64 可用最新版（非上游 latest） |\n' "$(manifest_value CODEX_VERSION)"
+    printf '| Codex (source) | `%s` | 私有 builds 仓库的 LoongArch 源码构建（可选通道） |\n' "$(manifest_value CODEX_SOURCE_VERSION)"
     printf '| OpenCode | `%s` | `opencode-linux-loong64` 最新版 |\n' "$(manifest_value OPENCODE_VERSION)"
     printf '| DSH | `%s` | Loongnix registry 最新版 |\n' "$(manifest_value DSH_VERSION)"
     printf '| Claude Code | `%s` | 最后一个 npm tarball 仍带 `cli.js` 的版本 |\n' "$(manifest_value CLAUDE_CODE_VERSION)"
@@ -438,10 +564,15 @@ replace_readme_block() {
 if [ "$CHANGED" -eq 1 ]; then
     while IFS=$'\t' read -r key name old new reason; do
         [ -n "$key" ] || continue
-        sed -i.bak "s/^[[:space:]]*${key}=.*/${key}=${new}/" "$MANIFEST"
-        sed -i.bak "s/^${key}_DEFAULT=.*/${key}_DEFAULT=${new}/" "$INSTALLER"
-        rm -f "$MANIFEST.bak" "$INSTALLER.bak"
+        case "$key" in
+            CODEX_SOURCE) continue ;;
+        esac
+        set_manifest_value "$key" "$new"
+        set_fallback_value "$key" "$new"
     done < "$TMP/changes.tsv"
+    if version_gt "$ZCODE_SEL" "$ZCODE_PIN"; then
+        set_manifest_value ZCODE_VERSION "$ZCODE_SEL"
+    fi
     replace_readme_block
 else
     rm -f "$OUT_CHANGES"
@@ -516,8 +647,18 @@ fi
         waiting-upstream-sync)
             notes="${notes}- DSH：上游 ${DSH_UP}，Loongnix 最新 ${DSH_LOONG}，等待同步。"$'\n' ;;
     esac
-    if [ -n "$CODEX_SOURCE" ] && version_gt "$CODEX_SOURCE" "$CODEX_LOONG"; then
-        notes="${notes}- Codex：采用私有 builds 仓库的源码构建 ${CODEX_SOURCE}（高于 loong64 port ${CODEX_LOONG}）。"$'\n'
+    if [ "$SOURCE_CHANGED" -eq 1 ]; then
+        notes="${notes}- Codex source：builds 仓库 ${CODEX_SOURCE_NEW} 已同步到清单（npm channel 仍为 ${CODEX_CHANNEL_PIN}）。"$'\n'
+    fi
+    if [ "$CODEX_SOURCE_STATUS" = source-private ]; then
+        notes="${notes}- Codex：source build available (private; set AUTO_ALIGN_TOKEN or URL)。清单记录 ${CODEX_SOURCE_PIN}，未改动 npm pin。"$'\n'
+    fi
+    if [ "$CODEX_SOURCE_STATUS" = source-unavailable ]; then
+        notes="${notes}- Codex：已配置 token 但读不到私有 builds release；source 版本保持 ${CODEX_SOURCE_PIN}。"$'\n'
+    fi
+    if [ "$CODEX_CHANNEL_PIN" = source ] && [ -z "$CODEX_SOURCE_URL_PIN" ] \
+        && [ -z "$CODEX_SOURCE_NEW_URL" ]; then
+        notes="${notes}- Codex：CODEX_CHANNEL=source 但 CODEX_SOURCE_URL 为空，安装会失败；请提供 URL 或 token。"$'\n'
     fi
     if [ "$CLAUDE_STATUS" = native-only ]; then
         notes="${notes}- Claude Code：上游 ${CLAUDE_UP} 已是 native-only（无 \`cli.js\`，在龙芯上只能 box64 运行）；selected 保持最后一个 JS 版 ${CLAUDE_JS}，不自动升级。"$'\n'

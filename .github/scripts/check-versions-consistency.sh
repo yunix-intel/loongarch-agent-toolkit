@@ -39,20 +39,50 @@ trap cleanup EXIT HUP INT TERM
 # shellcheck disable=SC1090,SC1091
 ( . "$MANIFEST" && printf '%s\n' \
     "NODE_VERSION=${NODE_VERSION:-}" \
+    "CODEX_CHANNEL=${CODEX_CHANNEL:-}" \
     "CODEX_VERSION=${CODEX_VERSION:-}" \
+    "CODEX_SOURCE_VERSION=${CODEX_SOURCE_VERSION:-}" \
+    "CODEX_SOURCE_URL=${CODEX_SOURCE_URL:-}" \
+    "CODEX_SOURCE_SHA256=${CODEX_SOURCE_SHA256:-}" \
+    "CODEX_LINK_DEFAULT=${CODEX_LINK_DEFAULT:-}" \
     "OPENCODE_VERSION=${OPENCODE_VERSION:-}" \
     "DSH_VERSION=${DSH_VERSION:-}" \
     "CLAUDE_CODE_VERSION=${CLAUDE_CODE_VERSION:-}" \
     "ZCODE_TAG=${ZCODE_TAG:-}" \
+    "ZCODE_VERSION=${ZCODE_VERSION:-}" \
     "CC_SWITCH_VERSION=${CC_SWITCH_VERSION:-}" ) > "$TMP/manifest.txt"
 
-REQUIRED_KEYS=(NODE_VERSION CODEX_VERSION OPENCODE_VERSION DSH_VERSION CLAUDE_CODE_VERSION ZCODE_TAG CC_SWITCH_VERSION)
+REQUIRED_KEYS=(NODE_VERSION CODEX_CHANNEL CODEX_VERSION CODEX_SOURCE_VERSION
+    CODEX_SOURCE_URL CODEX_SOURCE_SHA256 CODEX_LINK_DEFAULT OPENCODE_VERSION
+    DSH_VERSION CLAUDE_CODE_VERSION ZCODE_TAG ZCODE_VERSION CC_SWITCH_VERSION)
+# These keys must exist but may be empty.
+EMPTY_OK=" CODEX_SOURCE_URL "
+
 for key in "${REQUIRED_KEYS[@]}"; do
     value=$(sed -n "s/^${key}=//p" "$TMP/manifest.txt")
-    [ -n "$value" ] || fail_msg "versions.env does not define $key"
+    case "$EMPTY_OK" in
+        *" $key "*) ;;
+        *) [ -n "$value" ] || fail_msg "versions.env does not define $key" ;;
+    esac
 done
 
 manifest_value() { sed -n "s/^$1=//p" "$TMP/manifest.txt"; }
+
+case "$(manifest_value CODEX_CHANNEL)" in
+    npm|source) ;;
+    *) fail_msg "CODEX_CHANNEL must be npm or source" ;;
+esac
+case "$(manifest_value CODEX_LINK_DEFAULT)" in
+    0|1) ;;
+    *) fail_msg "CODEX_LINK_DEFAULT must be 0 or 1" ;;
+esac
+sha=$(manifest_value CODEX_SOURCE_SHA256)
+case "$sha" in
+    *[!0-9a-fA-F]*) fail_msg "CODEX_SOURCE_SHA256 must be a hex digest" ;;
+esac
+[ "${#sha}" -eq 64 ] || fail_msg "CODEX_SOURCE_SHA256 must be 64 hex characters"
+[ "$(manifest_value ZCODE_VERSION)" = "$(manifest_value ZCODE_TAG)" ] \
+    || fail_msg "ZCODE_VERSION must equal ZCODE_TAG"
 
 # --- 2. Installer fallbacks -------------------------------------------------
 # The block is machine-managed; the keys map to manifest keys by suffix.
@@ -61,12 +91,19 @@ extract_fallback() {
         | sed -n "s/^$1_DEFAULT=//p" | head -n 1 | tr -d '\r'
 }
 
-for key in NODE_VERSION CODEX_VERSION OPENCODE_VERSION DSH_VERSION; do
+FALLBACK_KEYS=(NODE_VERSION CODEX_CHANNEL CODEX_VERSION CODEX_SOURCE_VERSION
+    CODEX_SOURCE_URL CODEX_SOURCE_SHA256 CODEX_LINK_DEFAULT
+    OPENCODE_VERSION DSH_VERSION)
+EMPTY_OK_FALLBACK=" CODEX_SOURCE_URL "
+
+for key in "${FALLBACK_KEYS[@]}"; do
     want=$(manifest_value "$key")
     got=$(extract_fallback "$key")
-    if [ -z "$got" ]; then
-        fail_msg "installer fallback ${key}_DEFAULT is missing"
-    elif [ "$got" != "$want" ]; then
+    case "$EMPTY_OK_FALLBACK" in
+        *" $key "*) ;;
+        *) [ -n "$got" ] || fail_msg "installer fallback ${key}_DEFAULT is missing" ;;
+    esac
+    if [ "$got" != "$want" ]; then
         fail_msg "installer fallback ${key}_DEFAULT=${got} != versions.env ${key}=${want}"
     fi
 done
@@ -80,6 +117,7 @@ sed -n '/<!-- agent-versions:begin -->/,/<!-- agent-versions:end -->/p' "$README
 # Tool label as written in the README -> manifest key.
 readme_rows="Node.js:NODE_VERSION
 Codex:CODEX_VERSION
+Codex (source):CODEX_SOURCE_VERSION
 OpenCode:OPENCODE_VERSION
 DSH:DSH_VERSION
 Claude Code:CLAUDE_CODE_VERSION
