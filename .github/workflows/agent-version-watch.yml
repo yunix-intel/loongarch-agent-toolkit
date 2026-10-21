@@ -65,6 +65,30 @@ jobs:
       - name: Check manifest / installer / README consistency
         run: bash .github/scripts/check-versions-consistency.sh
 
+      - name: Install shellcheck for pre-push validation
+        if: steps.check.outputs.has_changes == 'true'
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - uses: actions/setup-go@v5
+        if: steps.check.outputs.has_changes == 'true'
+        with:
+          go-version-file: ccswitch-lite/go.mod
+
+      # The auto/version-alignment branch must be trustworthy even if GitHub
+      # does not start pull_request checks for a bot-created PR.
+      - name: Pre-push validation (manifest, shellcheck, Go)
+        if: steps.check.outputs.has_changes == 'true'
+        run: |
+          set -euo pipefail
+          bash .github/scripts/check-versions-consistency.sh
+          shellcheck -s sh install/install-loongarch-agents.sh
+          (
+            cd ccswitch-lite
+            go test ./...
+            CGO_ENABLED=0 GOOS=linux GOARCH=loong64 \
+              go build -trimpath -ldflags "-s -w" -o /tmp/ccswitch-lite .
+          )
+
       - name: Create or update issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -118,6 +142,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B auto/version-alignment
+
+          # Validate exactly what is about to be pushed; do not rely on
+          # pull_request checks that may not run for a bot-created PR.
+          bash .github/scripts/check-versions-consistency.sh
+          shellcheck -s sh install/install-loongarch-agents.sh
+
           git add install/versions.env install/install-loongarch-agents.sh README.md
           if git diff --cached --quiet; then
             echo "nothing to commit" >> "$GITHUB_STEP_SUMMARY"
