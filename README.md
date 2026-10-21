@@ -184,8 +184,18 @@ gh run view <run-id> --log        # or: gh run view <run-id> --web
 
 The step summary (table + status) is on the run page; actionable results are
 tracked in the `agent-update` issue, and proposed bumps in the auto-alignment
-PR. The alignment job runs the consistency check itself before committing, so
-a PR's correctness does not depend on additional `pull_request` runs.
+PR. The branch is validated **before** it is pushed (manifest consistency,
+`shellcheck`, `go test` and a loong64 build), so its content does not depend on
+extra CI runs.
+
+A PR opened with the default `GITHUB_TOKEN` is authored by
+`github-actions[bot]`; GitHub parks its `pull_request` run in
+`action_required` (no jobs, no logs) until a maintainer approves, which is not
+a content failure. Optionally set a repository secret `AUTO_ALIGN_TOKEN` (a PAT
+with contents and pull-request write access) so the branch and PR are created
+as that user and CI starts automatically; the token is passed only through the
+environment and is never committed. See
+[`docs/version-policy.md`](docs/version-policy.md#自动-pr-的-ci-与推送前校验).
 
 ## Claude Desktop repack
 

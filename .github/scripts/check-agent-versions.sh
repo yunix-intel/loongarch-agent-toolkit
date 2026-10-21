@@ -464,7 +464,11 @@ if [ "$CHANGED" -eq 1 ]; then
             printf '| %s (`%s`) | `%s` | `%s` | %s |\n' "$name" "$key" "$old" "$new" "$reason"
         done < "$TMP/changes.tsv"
         printf '\n`install/versions.env`、installer fallback 块和 README 版本表已同步，'
-        printf '并已在本地通过 `check-versions-consistency.sh`。\n\n'
+        printf '并已通过 `check-versions-consistency.sh`、`shellcheck` 和 '
+        printf '`ccswitch-lite` 的 `go test` + loong64 构建。\n\n'
+        printf '> 如果本 PR 显示 `action required` 且没有任何 job，这是 GitHub 对 '
+        printf 'bot 创建 PR 的审批门禁，不是内容失败；维护者 Approve 后 CI 才会运行。'
+        printf '分支在推送前已通过上述本地校验。\n\n'
         printf '本 PR 由 workflow 自动创建；不会自动合并、安装或发布。\n'
     } > "$OUT_CHANGES"
 fi

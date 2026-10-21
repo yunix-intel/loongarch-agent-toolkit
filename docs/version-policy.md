@@ -55,3 +55,29 @@ selected 取 tag 的最大 semver；release tag 只作为 “upstream” 列展�
 
 环境变量（`CODEX_VERSION` 等）仍然可以覆盖清单，仅影响单次安装调用，不会
 改动仓库文件。
+
+## 自动 PR 的 CI 与推送前校验
+
+自动对齐分支在推送前，watch job 会在 runner 上执行：
+
+```sh
+bash .github/scripts/check-versions-consistency.sh
+shellcheck -s sh install/install-loongarch-agents.sh
+cd ccswitch-lite && go test ./... && \
+  CGO_ENABLED=0 GOOS=linux GOARCH=loong64 go build -trimpath \
+  -ldflags "-s -w" -o /tmp/ccswitch-lite .
+```
+
+任何一步失败都不会推送分支或创建 PR，所以分支内容本身始终是已验证的。
+
+默认用 `GITHUB_TOKEN` 创建 PR 时，PR 作者是 `github-actions[bot]`，GitHub 会把
+该 PR 的 `pull_request` workflow 置为 `action_required`：run 会出现，但没有
+任何 job，日志也不可得，需要维护者点击 Approve 后才会运行。**这不是分支内容
+错误**；如果在批准前关闭 PR，这个 pending run 还可能变成 `failure`（仍然
+0 个 job）。
+
+可选配置仓库 secret `AUTO_ALIGN_TOKEN`（一个 PAT，需具备 contents 与
+pull requests 写权限）。配置后 workflow 会用该 PAT 推送分支和创建/更新 PR，
+PR 作者是 PAT 所属用户，CI 会自动启动，不再需要每次批准。token 只通过环境
+变量传给 git/gh，不会写进仓库；不要把它提交到任何文件。
+

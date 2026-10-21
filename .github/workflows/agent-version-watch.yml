@@ -129,7 +129,8 @@ jobs:
       - name: Open or update alignment PR
         if: steps.check.outputs.has_changes == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.AUTO_ALIGN_TOKEN || secrets.GITHUB_TOKEN }}
+          AUTO_ALIGN_TOKEN: ${{ secrets.AUTO_ALIGN_TOKEN }}
           DRY_RUN: ${{ inputs.dry_run }}
           BASE_REF: ${{ inputs.base || 'main' }}
         run: |
@@ -142,6 +143,15 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B auto/version-alignment
+
+          if [ -n "${AUTO_ALIGN_TOKEN:-}" ]; then
+            # Push and open the PR as the PAT owner. Checks on PRs created by
+            # github-actions[bot] wait in "action_required" until approved;
+            # with a human-owned PAT they start automatically. The token is
+            # only in the environment and is never written into the repo.
+            git config --local --unset-all http.https://github.com/.extraheader || true
+            gh auth setup-git
+          fi
 
           # Validate exactly what is about to be pushed; do not rely on
           # pull_request checks that may not run for a bot-created PR.
