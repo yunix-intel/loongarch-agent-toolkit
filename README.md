@@ -184,9 +184,8 @@ gh run view <run-id> --log        # or: gh run view <run-id> --web
 
 The step summary (table + status) is on the run page; actionable results are
 tracked in the `agent-update` issue, and proposed bumps in the auto-alignment
-PR. Note that branches/PRs created with the default `GITHUB_TOKEN` do not
-re-trigger `pull_request` workflows; the alignment job therefore runs the
-consistency check itself before committing.
+PR. The alignment job runs the consistency check itself before committing, so
+a PR's correctness does not depend on additional `pull_request` runs.
 
 ## Claude Desktop repack
 
