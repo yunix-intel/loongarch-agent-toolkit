@@ -74,9 +74,10 @@ selected 取 tag 的最大 semver；release tag 只作为 “upstream” 列展�
 - `desktop`：捆绑 CLI 的 Tauri 2 deb，需要系统 Node.js >= 24；
 - `standalone`：自带 Node 24 + CLI 的 Tauri 2 deb。
 
-linux-loong64 没有 `@mbears/opentui-core-linux-loong64`，所以 CLI 默认入口
-启动 Web UI，显式 `zcode tui` 会报错。opentui 移植是独立里程碑，不阻塞
-CLI/Web 或桌面发布。
+linux-loong64 的 ZCode CLI 现在自带 native opentui 渲染器，并捆绑 koffi /
+unsafe-pointer 的 loong64 构建；默认入口启动 TUI，`zcode --web` 仍可用。
+构建流程在 `loongarch-agent-builds` 的 `build-opentui`（x86_64 交叉编译
+`libopentui.so`）和 `build-cli`（loong64 构建 koffi/unsafe-pointer）job 中。
 
 ## 自动对齐流程
 

@@ -189,8 +189,9 @@ sudo ZCODE_CHANNEL=standalone ZCODE_STANDALONE_DEB_URL=... ZCODE_STANDALONE_DEB_
 ```
 
 资产 URL/SHA 也可以写进 `install/versions.env` 的 `ZCODE_*` 字段。loong64
-没有 `@mbears/opentui-core-linux-loong64`，所以 CLI 默认入口启动 Web UI；
-`zcode tui` 会明确报错。Web 和 Tauri 桌面不受影响。
+linux-loong64 的 CLI 现在捆绑 native opentui 渲染器（`libopentui.so`）以及
+koffi/unsafe-pointer 的 loong64 构建，默认入口启动 TUI；`zcode --web` 仍可用。
+构建流程见 `loongarch-agent-builds` 的 `build-opentui`/`build-cli` job。
 
 Why ABI matters, and why Node 22.16 silently does nothing for `dsh`, is
 documented in [`docs/abi-and-node.md`](docs/abi-and-node.md).
