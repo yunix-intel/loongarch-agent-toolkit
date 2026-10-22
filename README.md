@@ -168,8 +168,9 @@ ZCode 的 CLI 与两个 Tauri 桌面 deb 在私有
 支持三种通道：
 
 ```sh
-# 默认 cli 通道；URL/SHA 已记录在 versions.env
-sudo ./install/install-zcode-loongarch.sh
+# 默认 cli 通道；URL/SHA 已记录在 versions.env。
+# builds 仓库是私有的，需要能读取 release asset 的 token：
+sudo ZCODE_SOURCE_TOKEN=<github-token> ./install/install-zcode-loongarch.sh
 
 # 或显式覆盖资产（适合其他 release）
 sudo ZCODE_CHANNEL=cli \

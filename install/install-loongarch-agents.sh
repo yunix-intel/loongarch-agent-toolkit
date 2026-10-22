@@ -236,8 +236,15 @@ codex_download() {
             | curl --config - -fL --retry 3 --connect-timeout 20 -o "$dest" "$url" \
             || die "failed to download Codex source archive"
     else
-        curl -fL --retry 3 --connect-timeout 20 -o "$dest" "$url" \
-            || die "failed to download Codex source archive"
+        case "$url" in
+            https://api.github.com/*)
+                curl -fL --retry 3 --connect-timeout 20 \
+                    -H "Accept: application/octet-stream" -o "$dest" "$url" \
+                    || die "failed to download Codex source archive" ;;
+            *)
+                curl -fL --retry 3 --connect-timeout 20 -o "$dest" "$url" \
+                    || die "failed to download Codex source archive" ;;
+        esac
     fi
 }
 

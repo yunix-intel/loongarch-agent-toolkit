@@ -109,8 +109,15 @@ download() {
             | curl --config - -fL --retry 3 --connect-timeout 20 -o "$dest" "$url" \
             || die "download failed: $url"
     else
-        curl -fL --retry 3 --connect-timeout 20 -o "$dest" "$url" \
-            || die "download failed: $url"
+        case "$url" in
+            https://api.github.com/*)
+                curl -fL --retry 3 --connect-timeout 20 \
+                    -H "Accept: application/octet-stream" -o "$dest" "$url" \
+                    || die "download failed: $url" ;;
+            *)
+                curl -fL --retry 3 --connect-timeout 20 -o "$dest" "$url" \
+                    || die "download failed: $url" ;;
+        esac
     fi
 }
 
