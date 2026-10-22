@@ -66,6 +66,18 @@ release），发现更高版本时同步更新上述三个 source 字段；没�
 selected 取 tag 的最大 semver；release tag 只作为 “upstream” 列展示，并在
 落后时标记 `tag-ahead-of-release`。
 
+`install/versions.env` 还记录 `ZCODE_CHANNEL=cli|desktop|standalone` 和对应的
+资产 URL/SHA。`install/install-zcode-loongarch.sh` 可以安装：
+
+- `cli`：CLI 分发包，写 `/usr/local/bin/zcode-<version>`（默认不覆盖
+  `/usr/local/bin/zcode`，`ZCODE_LINK_DEFAULT=1` 才覆盖）；
+- `desktop`：捆绑 CLI 的 Tauri 2 deb，需要系统 Node.js >= 24；
+- `standalone`：自带 Node 24 + CLI 的 Tauri 2 deb。
+
+linux-loong64 没有 `@mbears/opentui-core-linux-loong64`，所以 CLI 默认入口
+启动 Web UI，显式 `zcode tui` 会报错。opentui 移植是独立里程碑，不阻塞
+CLI/Web 或桌面发布。
+
 ## 自动对齐流程
 
 1. 每日 02:17 UTC（或手动）运行 `agent-version-watch.yml`。

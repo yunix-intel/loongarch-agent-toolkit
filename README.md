@@ -9,7 +9,7 @@ This repository collects four pieces of work:
 | --- | --- | --- |
 | [`ccswitch-lite/`](ccswitch-lite/) | Single-binary Go CLI + Web UI for switching Claude Desktop / Claude Code / Codex between private gateways | Working; 78 acceptance assertions pass |
 | [`zcode-tauri/`](zcode-tauri/) | Lightweight Tauri 2 shell around the ZCode Web UI | Working; release binary and `.deb` built |
-| [`install/`](install/) | Installer for ABI2.0 Node, `codex`, `opencode`, `dsh` from the Loongnix registry | Working; all three CLIs verified |
+| [`install/`](install/) | Installer for ABI2.0 Node, `codex`, `opencode`, `dsh`, plus optional ZCode CLI/desktop assets | Working; all three CLIs verified; ZCode installer added |
 | [`claude-desktop-repack/`](claude-desktop-repack/) | Scripts used for an unofficial Claude Desktop loong64 repack | Experimental; UI/login works, bundled Claude Code is x86-64 |
 
 The official [`farion1231/cc-switch`](https://github.com/farion1231/cc-switch)
@@ -160,6 +160,33 @@ sudo CODEX_CHANNEL=source \
 `CODEX_SOURCE_URL` 支持 `http(s)://` 或本地 `.tar.gz`。私有 GitHub release
 资产需 `CODEX_SOURCE_TOKEN`（或 `GITHUB_TOKEN`）；安装器在解包前校验
 SHA-256，并拒绝包含绝对路径或 `..` 的条目。
+
+### ZCode CLI / desktop
+
+ZCode 的 CLI 与两个 Tauri 桌面 deb 在私有
+`yunix-intel/loongarch-agent-builds` 的 release 中。`install-zcode-loongarch.sh`
+支持三种通道：
+
+```sh
+# CLI（需要系统 Node.js >= 24；默认只写 zcode-<version>，不覆盖默认 zcode）
+sudo ZCODE_CHANNEL=cli \
+  ZCODE_CLI_URL=https://api.github.com/repos/yunix-intel/loongarch-agent-builds/releases/assets/<id> \
+  ZCODE_CLI_SHA256=<64-hex> \
+  ZCODE_SOURCE_TOKEN=<private-asset-token> \
+  ./install/install-zcode-loongarch.sh
+
+# 轻量 Tauri 桌面（捆绑 CLI，依赖系统 Node >= 24）
+sudo ZCODE_CHANNEL=desktop ZCODE_DESKTOP_DEB_URL=... ZCODE_DESKTOP_DEB_SHA256=... \
+  ZCODE_SOURCE_TOKEN=... ./install/install-zcode-loongarch.sh
+
+# 自带 Node + CLI 的桌面版
+sudo ZCODE_CHANNEL=standalone ZCODE_STANDALONE_DEB_URL=... ZCODE_STANDALONE_DEB_SHA256=... \
+  ZCODE_SOURCE_TOKEN=... ./install/install-zcode-loongarch.sh
+```
+
+资产 URL/SHA 也可以写进 `install/versions.env` 的 `ZCODE_*` 字段。loong64
+没有 `@mbears/opentui-core-linux-loong64`，所以 CLI 默认入口启动 Web UI；
+`zcode tui` 会明确报错。Web 和 Tauri 桌面不受影响。
 
 Why ABI matters, and why Node 22.16 silently does nothing for `dsh`, is
 documented in [`docs/abi-and-node.md`](docs/abi-and-node.md).
