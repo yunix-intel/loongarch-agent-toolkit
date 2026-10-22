@@ -13,7 +13,7 @@ This repository collects four pieces of work:
 | [`claude-desktop-repack/`](claude-desktop-repack/) | Scripts used for an unofficial Claude Desktop loong64 repack | Experimental; UI/login works, bundled Claude Code is x86-64 |
 
 The official [`farion1231/cc-switch`](https://github.com/farion1231/cc-switch)
-Tauri app **has been built for loongarch64**: upstream v4.0.15 compiles with
+Tauri app **has been built for loongarch64**: upstream v4.0.18 compiles with
 Rust 1.97.1 and its full UI has been verified under Xvfb. The port lives in the
 private repository
 [`yunix-intel/cc-switch-loongarch`](https://github.com/yunix-intel/cc-switch-loongarch);
@@ -135,7 +135,7 @@ overrides the install prefix. The system Node is untouched.
 | DSH | `0.2.1-rc.2` | Loongnix registry 最新版 |
 | Claude Code | `2.1.112` | 最后一个 npm tarball 仍带 `cli.js` 的版本 |
 | ZCode | `v3.15.1` | `zai-org/ZCode` 最新 semver tag（非 GitHub release） |
-| cc-switch | `v4.0.17` | `farion1231/cc-switch` 最新 release |
+| cc-switch | `v4.0.18` | `farion1231/cc-switch` 最新 release |
 <!-- agent-versions:end -->
 
 `selected` 的含义是“当前龙芯上可用的最新版”，不一定是上游 latest。版本

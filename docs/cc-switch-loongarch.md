@@ -5,7 +5,7 @@ Tauri application now builds and runs on loongarch64. The port is maintained in
 the private repository
 [`yunix-intel/cc-switch-loongarch`](https://github.com/yunix-intel/cc-switch-loongarch).
 
-Status: upstream **v4.0.15** built natively on LoongArch. The complete UI was
+Status: upstream **v4.0.18** built natively on LoongArch. The complete UI was
 verified under Xvfb, including the Claude Code, Claude Desktop, Codex, Gemini,
 OpenCode, MCP, Skills and Prompts pages.
 

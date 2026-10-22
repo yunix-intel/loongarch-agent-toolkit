@@ -249,7 +249,7 @@ on Linux”。这是 Desktop 自身在 LoongArch 上的限制，与 ccswitch-lit
 
 早期“未移植、ring 硬阻塞”的结论**已被实测推翻**：
 
-- 官方 cc-switch **v4.0.15** 已在 loongarch64 上用 **Rust 1.97.1 直接构建成功**；
+- 官方 cc-switch **v4.0.18** 已在 loongarch64 上用 **Rust 1.97.1 直接构建成功**；
 - `ring 0.17.14` 能正常编译；其 `build.rs` 的 `panic!("unsupported arch")`
   只在 Windows x86 的 NASM 路径触发，Linux loong64 构建不会走到；
 - 构建命令必须带 `--features tauri/custom-protocol`，否则 webview 仍指向
