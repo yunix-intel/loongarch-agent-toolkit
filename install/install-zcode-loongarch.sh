@@ -71,6 +71,9 @@ case "$ZCODE_CHANNEL" in
     cli|desktop|standalone) ;;
     *) die "ZCODE_CHANNEL must be cli, desktop or standalone, got: $ZCODE_CHANNEL" ;;
 esac
+case "$ZCODE_VERSION" in
+    *[!0-9A-Za-z._-]*) die "invalid ZCODE_VERSION: $ZCODE_VERSION" ;;
+esac
 case "$ZCODE_LINK_DEFAULT" in
     0|1) ;;
     *) die "ZCODE_LINK_DEFAULT must be 0 or 1" ;;
