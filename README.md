@@ -168,7 +168,10 @@ ZCode 的 CLI 与两个 Tauri 桌面 deb 在私有
 支持三种通道：
 
 ```sh
-# CLI（需要系统 Node.js >= 24；默认只写 zcode-<version>，不覆盖默认 zcode）
+# 默认 cli 通道；URL/SHA 已记录在 versions.env
+sudo ./install/install-zcode-loongarch.sh
+
+# 或显式覆盖资产（适合其他 release）
 sudo ZCODE_CHANNEL=cli \
   ZCODE_CLI_URL=https://api.github.com/repos/yunix-intel/loongarch-agent-builds/releases/assets/<id> \
   ZCODE_CLI_SHA256=<64-hex> \
