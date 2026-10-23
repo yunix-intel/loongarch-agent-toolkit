@@ -79,6 +79,14 @@ unsafe-pointer 的 loong64 构建；默认入口启动 TUI，`zcode --web` 仍�
 构建流程在 `loongarch-agent-builds` 的 `build-opentui`（x86_64 交叉编译
 `libopentui.so`）和 `build-cli`（loong64 构建 koffi/unsafe-pointer）job 中。
 
+另外两个安装器：
+
+- `install/install-claude-code-loongarch.sh`：固定安装最后一个纯 JS 版
+  Claude Code 2.1.112，关闭自动更新；native-only 的新版只保留 qemu wrapper。
+- `install/install-cc-switch-loongarch.sh`：校验并安装私有
+  `cc-switch-loongarch` release 的 v4.0.18 deb，`/usr/bin/cc-switch` 与
+  `ccswitch-lite` 的 `/usr/local/bin/ccswitch` 可以并存。
+
 ## 自动对齐流程
 
 1. 每日 02:17 UTC（或手动）运行 `agent-version-watch.yml`。
