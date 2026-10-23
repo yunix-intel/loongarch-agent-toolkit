@@ -9,7 +9,7 @@ This repository collects four pieces of work:
 | --- | --- | --- |
 | [`ccswitch-lite/`](ccswitch-lite/) | Single-binary Go CLI + Web UI for switching Claude Desktop / Claude Code / Codex between private gateways | Working; 78 acceptance assertions pass |
 | [`zcode-tauri/`](zcode-tauri/) | Lightweight Tauri 2 shell around the ZCode Web UI | Working; release binary and `.deb` built |
-| [`install/`](install/) | Installer for ABI2.0 Node, `codex`, `opencode`, `dsh`, plus optional ZCode CLI/desktop assets | Working; all three CLIs verified; ZCode installer added |
+| [`install/`](install/) | Installers for ABI2.0 Node, `codex`, `opencode`, `dsh`, Claude Code, ZCode and cc-switch | Working; native CLIs, ZCode TUI, Claude Code 2.1.112 and cc-switch deb installers |
 | [`claude-desktop-repack/`](claude-desktop-repack/) | Scripts used for an unofficial Claude Desktop loong64 repack | Experimental; UI/login works, bundled Claude Code is x86-64 |
 
 The official [`farion1231/cc-switch`](https://github.com/farion1231/cc-switch)
@@ -188,10 +188,36 @@ sudo ZCODE_CHANNEL=standalone ZCODE_STANDALONE_DEB_URL=... ZCODE_STANDALONE_DEB_
   ZCODE_SOURCE_TOKEN=... ./install/install-zcode-loongarch.sh
 ```
 
-资产 URL/SHA 也可以写进 `install/versions.env` 的 `ZCODE_*` 字段。loong64
+资产 URL/SHA 也可以写进 `install/versions.env` 的 `ZCODE_*` 字段。
 linux-loong64 的 CLI 现在捆绑 native opentui 渲染器（`libopentui.so`）以及
 koffi/unsafe-pointer 的 loong64 构建，默认入口启动 TUI；`zcode --web` 仍可用。
 构建流程见 `loongarch-agent-builds` 的 `build-opentui`/`build-cli` job。
+
+### Claude Code（2.1.112 纯 JS 版）
+
+2.1.113 起上游只发 native-only 包，没有 linux-loong64 artifact。安装器固定安装
+最后一个带 `cli.js` 的 2.1.112，并关闭自动更新，避免它自己拉成 native-only：
+
+```sh
+sudo ./install/install-claude-code-loongarch.sh
+```
+
+默认安装到 `/opt/claude-code`，wrapper 为 `/usr/local/bin/claude`，使用
+`/opt/node26`（不存在时回退 `/opt/node24`、`/opt/node22-abi2`）。最新的
+2.1.305 仍可通过已有的 `qemu-x86_64-static -L /opt/x86_64-root` wrapper
+`claude-latest-x64` 使用，不设为默认。
+
+### cc-switch 官方 Tauri 版
+
+官方 cc-switch 的 loong64 deb 在私有 `cc-switch-loongarch` release 中：
+
+```sh
+sudo CC_SWITCH_SOURCE_TOKEN=<github-token> ./install/install-cc-switch-loongarch.sh
+```
+
+安装器校验 deb SHA-256 后通过 apt/dpkg 安装，启动器是 `/usr/bin/cc-switch`。
+`ccswitch-lite` 的 `/usr/local/bin/ccswitch` 不受影响，两者可以并存。
+资产 URL/SHA 在 `install/versions.env` 的 `CC_SWITCH_DEB_*` 字段。
 
 Why ABI matters, and why Node 22.16 silently does nothing for `dsh`, is
 documented in [`docs/abi-and-node.md`](docs/abi-and-node.md).
