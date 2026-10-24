@@ -45,7 +45,9 @@ release 资产需 `CODEX_SOURCE_TOKEN`（或 `GITHUB_TOKEN`），URL 用 API ass
 `AUTO_ALIGN_TOKEN` 配置后，watch 会用该 token 读取 builds 仓库（含 draft
 release），发现更高版本时同步更新上述三个 source 字段；没有 token 时 issue
 标注 `source build available (private; set AUTO_ALIGN_TOKEN or URL)`，不会
-改动 npm pin。同一个 token 也用于读取私有 `cc-switch-loongarch` 仓库。
+改动 npm pin。同一个 token 也用于读取私有 `cc-switch-loongarch` 仓库；如果是
+fine-grained token，必须把 `cc-switch-loongarch` 也加入 Repository access，
+否则状态为 `private-repo-unreadable`，issue 会提示补授权。
 
 **版本号、URL 和 SHA-256 永远作为一个整体更新。** 只看上游版本号就改
 `ZCODE_TAG`/`CC_SWITCH_VERSION`、却保留旧资产的 URL/SHA，会让安装器把旧

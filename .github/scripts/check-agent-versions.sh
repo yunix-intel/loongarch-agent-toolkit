@@ -215,7 +215,7 @@ private_release_assets() {
     gh_builds_api "repos/$repo/releases?per_page=100" --paginate \
         --jq '.[] | .tag_name as $tag | .assets[]?
               | [$tag, .name, .url, (.digest // ""), (.state // "")] | @tsv' \
-        2>/dev/null || true
+        2>/dev/null
 }
 
 # Newest cc-switch loong64 deb in the private builds repo.
@@ -224,7 +224,7 @@ private_release_assets() {
 # upstream tag (no matching deb) is ignored rather than pinned half-way.
 ccswitch_build_release() {
     local tsv="$TMP/ccswitch-assets.tsv"
-    private_release_assets "$CCSWITCH_BUILDS_REPO" > "$tsv"
+    private_release_assets "$CCSWITCH_BUILDS_REPO" > "$tsv" || return 1
     [ -s "$tsv" ] || return 0
     "$PYTHON" -I - "$tsv" <<'PY'
 import re, sys
@@ -258,7 +258,7 @@ PY
 # set is selectable, so the manifest never points at a missing file.
 zcode_build_release() {
     local tsv="$TMP/zcode-assets.tsv"
-    private_release_assets "$BUILDS_REPO" > "$tsv"
+    private_release_assets "$BUILDS_REPO" > "$tsv" || return 1
     [ -s "$tsv" ] || return 0
     "$PYTHON" -I - "$tsv" <<'PY'
 import re, sys
@@ -454,8 +454,10 @@ CLAUDE_JS=$(claude_js_latest)
 ZCODE_RELEASE=$(gh_latest_release "$ZCODE_REPO")
 ZCODE_TAGS=$(gh_tags "$ZCODE_REPO" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)
 CCSWITCH_RELEASE=$(gh_latest_release "$CCSWITCH_REPO")
-ZCODE_BUILD_TSV=$(zcode_build_release)
-CCSWITCH_BUILD_TSV=$(ccswitch_build_release)
+ZCODE_READ_FAILED=0
+CCSWITCH_READ_FAILED=0
+ZCODE_BUILD_TSV=$(zcode_build_release) || ZCODE_READ_FAILED=1
+CCSWITCH_BUILD_TSV=$(ccswitch_build_release) || CCSWITCH_READ_FAILED=1
 
 ZCODE_BUILD=$(printf '%s' "$ZCODE_BUILD_TSV" | cut -f1)
 ZCODE_BUILD_CLI_URL=$(printf '%s' "$ZCODE_BUILD_TSV" | cut -f2)
@@ -542,6 +544,15 @@ elif [ -n "$ZCODE_RELEASE" ] && [ "$ZCODE_RELEASE" != "$ZCODE_BUILD" ] \
     ZCODE_STATUS='tag-ahead-of-release'
 else
     ZCODE_STATUS='up-to-date'
+fi
+
+# A token that cannot see the private repo is a configuration problem, not a
+# missing build; report it instead of silently keeping the pin.
+if [ "$CCSWITCH_READ_FAILED" -eq 1 ]; then
+    CCSWITCH_STATUS='private-repo-unreadable'
+fi
+if [ "$ZCODE_READ_FAILED" -eq 1 ]; then
+    ZCODE_STATUS='private-repo-unreadable'
 fi
 
 CODEX_NOTE='龙芯 loong64 可用最新版'
@@ -861,6 +872,12 @@ fi
     fi
     if [ "$CCSWITCH_STATUS" = waiting-for-loongarch-release ]; then
         notes="${notes}- cc-switch：上游 release 是 ${CCSWITCH_RELEASE}，但没有可读取的 loong64 deb release；selected 保持 ${CCSWITCH_PIN}。"$'\n'
+    fi
+    if [ "$CCSWITCH_READ_FAILED" -eq 1 ]; then
+        notes="${notes}- cc-switch：AUTO_ALIGN_TOKEN 无法读取 \`${CCSWITCH_BUILDS_REPO}\`（HTTP 404/403）。请把该仓库加入 token 的 Repository access，否则 cc-switch 不会自动对齐；selected 保持 ${CCSWITCH_PIN}。"$'\n'
+    fi
+    if [ "$ZCODE_READ_FAILED" -eq 1 ]; then
+        notes="${notes}- ZCode：AUTO_ALIGN_TOKEN 无法读取 \`${BUILDS_REPO}\` 的 release；selected 保持 ${ZCODE_PIN}。"$'\n'
     fi
     if [ "$CODEX_STATUS" = query-failed ] || [ "$OPENCODE_STATUS" = query-failed ] \
         || [ "$DSH_STATUS" = query-failed ] || [ "$CLAUDE_STATUS" = query-failed ] \
