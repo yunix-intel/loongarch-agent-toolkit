@@ -83,6 +83,9 @@ jobs:
           set -euo pipefail
           bash .github/scripts/check-versions-consistency.sh
           shellcheck -s sh install/install-loongarch-agents.sh
+          shellcheck -s sh install/install-claude-code-loongarch.sh
+          shellcheck -s sh install/install-zcode-loongarch.sh
+          shellcheck -s sh install/install-cc-switch-loongarch.sh
           (
             cd ccswitch-lite
             go test ./...
@@ -158,6 +161,9 @@ jobs:
           # pull_request checks that may not run for a bot-created PR.
           bash .github/scripts/check-versions-consistency.sh
           shellcheck -s sh install/install-loongarch-agents.sh
+          shellcheck -s sh install/install-claude-code-loongarch.sh
+          shellcheck -s sh install/install-zcode-loongarch.sh
+          shellcheck -s sh install/install-cc-switch-loongarch.sh
 
           git add install/versions.env install/install-loongarch-agents.sh README.md
           if git diff --cached --quiet; then

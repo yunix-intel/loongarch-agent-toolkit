@@ -60,8 +60,8 @@ Versions used and verified:
 | Package | Version | Runtime |
 | --- | --- | --- |
 | `@openai/codex` | 0.162.0 | Node (JS entry + native helper) |
-| `opencode-ai` | 1.17.11 | Native LoongArch ELF (`bin/opencode.exe`), no Node |
-| `@deepseek-ai/dsh` | 0.2.0-rc.2 (latest at the time) | Node + ABI2.0 native addon |
+| `opencode-ai` | 1.19.0 | Native LoongArch ELF (`bin/opencode.exe`), no Node |
+| `@deepseek-ai/dsh` | 0.2.1-rc.2 | Node + ABI2.0 native addon |
 
 Install under an ABI2.0 Node prefix so npm selects the right native artifacts:
 
@@ -69,7 +69,7 @@ Install under an ABI2.0 Node prefix so npm selects the right native artifacts:
 NODE_PREFIX=/opt/node22-abi2
 PATH="$NODE_PREFIX/bin:$PATH" \
   "$NODE_PREFIX/bin/npm" install -g --registry https://registry.loongnix.cn:5873 \
-  @openai/codex@0.162.0 opencode-ai@1.17.11 @deepseek-ai/dsh@latest
+  @openai/codex@0.162.0 opencode-ai@1.19.0 @deepseek-ai/dsh@latest
 ```
 
 `install/install-loongarch-agents.sh` automates all of this and leaves the
@@ -82,5 +82,5 @@ system Node (`/usr/bin/node`, v20.19.2 on the lab machine) untouched.
 LC_ALL=C readelf -h /opt/node22-abi2/bin/node | grep Flags   # 0x43
 codex --version                                    # codex-cli 0.162.0
 opencode --version
-dsh --version                                      # 0.2.0-rc.2
+dsh --version                                      # 0.2.1-rc.2
 ```

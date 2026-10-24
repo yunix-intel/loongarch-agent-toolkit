@@ -1584,7 +1584,7 @@ func cmdWeb(p *Paths, args []string) error {
 
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           mux,
+		Handler:           webGuard(mux),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	ln, err := net.Listen("tcp", *addr)
@@ -1618,6 +1618,54 @@ func ensureLoopback(addr string) error {
 		return fmt.Errorf("为安全起见只允许监听回环地址，收到 %q", addr)
 	}
 	return nil
+}
+
+// hostIsLoopback accepts a bare host or host:port whose host is localhost or a
+// loopback IP.  It is used for both the Host header and the Origin header.
+func hostIsLoopback(hostport string) bool {
+	host := hostport
+	if h, _, err := net.SplitHostPort(hostport); err == nil {
+		host = h
+	}
+	host = strings.Trim(host, "[]")
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// webGuard blocks cross-site writes to the local UI.  Binding to loopback is
+// not enough: any web page can POST to 127.0.0.1 unless the server rejects
+// requests whose Host is not loopback, whose Origin is not same-site, or whose
+// body is not declared as JSON (a cross-origin JSON request needs a CORS
+// preflight, which this server never grants).
+func webGuard(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !hostIsLoopback(r.Host) {
+			writeErr(w, http.StatusForbidden, errors.New("只接受本机回环 Host"))
+			return
+		}
+		if origin := r.Header.Get("Origin"); origin != "" {
+			u, err := url.Parse(origin)
+			if err != nil || u.Scheme == "" || !hostIsLoopback(u.Host) {
+				writeErr(w, http.StatusForbidden, errors.New("拒绝跨站请求"))
+				return
+			}
+		}
+		switch r.Method {
+		case http.MethodGet, http.MethodHead:
+		default:
+			ct := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Type")))
+			if !strings.HasPrefix(ct, "application/json") {
+				writeErr(w, http.StatusUnsupportedMediaType, errors.New("请求必须使用 application/json"))
+				return
+			}
+		}
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Cache-Control", "no-store")
+		next.ServeHTTP(w, r)
+	})
 }
 
 func publicProviders(list []Provider) []map[string]any {

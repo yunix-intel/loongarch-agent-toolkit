@@ -34,10 +34,11 @@ case "$(uname -m)" in
     *) die "this script targets LoongArch, got: $(uname -m)" ;;
 esac
 
-CC_SWITCH_VERSION=${CC_SWITCH_VERSION:-$(manifest_get CC_SWITCH_VERSION v4.0.18)}
+CC_SWITCH_VERSION=${CC_SWITCH_VERSION:-$(manifest_get CC_SWITCH_VERSION v4.0.19)}
 CC_SWITCH_DEB_URL=${CC_SWITCH_DEB_URL:-$(manifest_get CC_SWITCH_DEB_URL '')}
 CC_SWITCH_DEB_SHA256=${CC_SWITCH_DEB_SHA256:-$(manifest_get CC_SWITCH_DEB_SHA256 '')}
-CC_SWITCH_SOURCE_TOKEN=${CC_SWITCH_SOURCE_TOKEN:-${GITHUB_TOKEN:-}}
+CC_SWITCH_SOURCE_TOKEN=${CC_SWITCH_SOURCE_TOKEN:-}
+CC_SWITCH_GITHUB_TOKEN=${GITHUB_TOKEN:-}
 
 case "$CC_SWITCH_VERSION" in
     *[!0-9A-Za-z._-]*) die "invalid CC_SWITCH_VERSION: $CC_SWITCH_VERSION" ;;
@@ -60,11 +61,20 @@ trap cleanup EXIT HUP INT TERM
 DEB="$TMP/cc-switch.deb"
 
 log "downloading cc-switch $CC_SWITCH_VERSION"
-if [ -n "$CC_SWITCH_SOURCE_TOKEN" ]; then
-    case "$CC_SWITCH_SOURCE_TOKEN" in
+# Never send an ambient GITHUB_TOKEN to a non-GitHub host.  CC_SWITCH_SOURCE_TOKEN
+# is explicit, so it may be used for a mirror the caller chose on purpose.
+token=''
+case "$CC_SWITCH_DEB_URL" in
+    https://api.github.com/*|https://github.com/*)
+        token=${CC_SWITCH_SOURCE_TOKEN:-$CC_SWITCH_GITHUB_TOKEN} ;;
+    *)
+        token=${CC_SWITCH_SOURCE_TOKEN:-} ;;
+esac
+if [ -n "$token" ]; then
+    case "$token" in
         *[!A-Za-z0-9_.~+/=-]*) die "CC_SWITCH_SOURCE_TOKEN contains unsupported characters" ;;
     esac
-    printf 'header = "Authorization: Bearer %s"\nheader = "Accept: application/octet-stream"\n' "$CC_SWITCH_SOURCE_TOKEN" \
+    printf 'header = "Authorization: Bearer %s"\nheader = "Accept: application/octet-stream"\n' "$token" \
         | curl --config - -fL --retry 3 --connect-timeout 20 -o "$DEB" "$CC_SWITCH_DEB_URL" \
         || die "failed to download cc-switch deb"
 else
@@ -86,7 +96,7 @@ actual=$(sha256sum "$DEB" | awk '{print $1}')
 # is the version the manifest names (a version bump with a stale URL is a bug).
 pkg_version=$(dpkg-deb -f "$DEB" Version)
 case "$pkg_version" in
-    "${CC_SWITCH_VERSION#v}"*) ;;
+    "${CC_SWITCH_VERSION#v}"|"${CC_SWITCH_VERSION#v}"[.~+-]*) ;;
     *) die "cc-switch deb is version $pkg_version, expected ${CC_SWITCH_VERSION#v}*" ;;
 esac
 

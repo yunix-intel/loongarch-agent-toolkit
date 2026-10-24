@@ -47,7 +47,9 @@ release），发现更高版本时同步更新上述三个 source 字段；没�
 标注 `source build available (private; set AUTO_ALIGN_TOKEN or URL)`，不会
 改动 npm pin。同一个 token 也用于读取私有 `cc-switch-loongarch` 仓库；如果是
 fine-grained token，必须把 `cc-switch-loongarch` 也加入 Repository access，
-否则状态为 `private-repo-unreadable`，issue 会提示补授权。
+否则状态为 `private-repo-unreadable`，issue 会提示补授权。完全没有配置
+token 时，ZCode/cc-switch 也显示 `private-repo-unreadable`，不会伪装成
+`up-to-date`。
 
 **版本号、URL 和 SHA-256 永远作为一个整体更新。** 只看上游版本号就改
 `ZCODE_TAG`/`CC_SWITCH_VERSION`、却保留旧资产的 URL/SHA，会让安装器把旧
@@ -99,7 +101,7 @@ unsafe-pointer 的 loong64 构建；默认入口启动 TUI，`zcode --web` 仍�
 - `install/install-claude-code-loongarch.sh`：固定安装最后一个纯 JS 版
   Claude Code 2.1.112，关闭自动更新；native-only 的新版只保留 qemu wrapper。
 - `install/install-cc-switch-loongarch.sh`：校验并安装私有
-  `cc-switch-loongarch` release 的 v4.0.18 deb，`/usr/bin/cc-switch` 与
+  `cc-switch-loongarch` release 的 v4.0.19 deb，`/usr/bin/cc-switch` 与
   `ccswitch-lite` 的 `/usr/local/bin/ccswitch` 可以并存。
 
 ## 自动对齐流程

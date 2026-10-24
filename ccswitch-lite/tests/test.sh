@@ -175,6 +175,27 @@ STATE=$(curl -s http://127.0.0.1:18081/api/state)
 echo "$STATE" | python3 -c 'import json,sys; s=json.load(sys.stdin); assert s["current"]=="fake"; p=s["providers"][0]; assert p["hasKey"] and "test-key" not in json.dumps(s); print("state maskedKey:", p["maskedKey"])'
 curl -s -X POST -H 'Content-Type: application/json' -d '{"name":"fake"}' http://127.0.0.1:18081/api/use | tee "$BASE/web-use.json"
 python3 -c 'import json,os; j=json.load(open(os.path.join(os.environ["BASE"], "web-use.json"))); assert j["ok"], j'
+
+echo "== web CSRF guard =="
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+  -H 'Origin: http://evil.example' -H 'Content-Type: application/json' \
+  -d '{"name":"fake"}' http://127.0.0.1:18081/api/use)
+[ "$code" = "403" ] || { echo "FAIL: cross-origin POST not rejected ($code)"; exit 1; }
+echo "PASS cross-origin POST rejected"
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+  -H 'Content-Type: text/plain' -d '{"name":"fake"}' http://127.0.0.1:18081/api/use)
+[ "$code" = "415" ] || { echo "FAIL: text/plain POST not rejected ($code)"; exit 1; }
+echo "PASS non-JSON POST rejected"
+code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: evil.example' \
+  http://127.0.0.1:18081/api/state)
+[ "$code" = "403" ] || { echo "FAIL: non-loopback Host not rejected ($code)"; exit 1; }
+echo "PASS non-loopback Host rejected"
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+  -H 'Origin: http://127.0.0.1:18081' -H 'Content-Type: application/json' \
+  -d '{"name":"fake"}' http://127.0.0.1:18081/api/use)
+[ "$code" = "200" ] || { echo "FAIL: same-origin POST rejected ($code)"; exit 1; }
+echo "PASS same-origin POST allowed"
+
 cleanup
 trap - EXIT
 echo "WEB TESTS PASSED"

@@ -77,6 +77,7 @@ manifest_get() {
 
 # BEGIN VERSION FALLBACKS -- kept in sync with install/versions.env by CI.
 NODE_VERSION_DEFAULT=22.23.3
+NODE_SHA256_DEFAULT=bbf4ecadfb5dcfe8420998f4539b927edbaea92c2a5f60057317be2fe41ad654
 CODEX_CHANNEL_DEFAULT=npm
 CODEX_VERSION_DEFAULT=0.162.0
 CODEX_SOURCE_VERSION_DEFAULT=0.164.0
@@ -96,6 +97,7 @@ case "$ARCH" in
 esac
 
 NODE_VERSION=${NODE_VERSION:-$(manifest_get NODE_VERSION "$NODE_VERSION_DEFAULT")}
+NODE_SHA256=${NODE_SHA256:-$(manifest_get NODE_SHA256 "$NODE_SHA256_DEFAULT")}
 NODE_PREFIX=${NODE_PREFIX:-/opt/node22-abi2}
 NPM_REGISTRY=${NPM_REGISTRY:-https://registry.loongnix.cn:5873}
 CODEX_CHANNEL=${CODEX_CHANNEL:-$(manifest_get CODEX_CHANNEL "$CODEX_CHANNEL_DEFAULT")}
@@ -169,10 +171,18 @@ NODE_TARBALL=$(basename "$NODE_URL")
 log "downloading Node $NODE_VERSION from $NODE_URL"
 curl -fL --retry 3 --connect-timeout 20 -o "$TMP/$NODE_TARBALL" "$NODE_URL"
 
-if curl -fsSL --retry 2 -o "$TMP/$NODE_TARBALL.sha256" "$NODE_URL.sha256"; then
+if [ -n "$NODE_SHA256" ]; then
+    case "$NODE_SHA256" in
+        *[!0-9a-fA-F]*) die "NODE_SHA256 must be a hex digest" ;;
+    esac
+    [ "${#NODE_SHA256}" -eq 64 ] || die "NODE_SHA256 must be 64 hex characters"
+    actual=$(sha256sum "$TMP/$NODE_TARBALL" | awk '{print $1}')
+    [ "$actual" = "$NODE_SHA256" ] \
+        || die "Node checksum mismatch: expected $NODE_SHA256, got $actual"
+elif curl -fsSL --retry 2 -o "$TMP/$NODE_TARBALL.sha256" "$NODE_URL.sha256"; then
     ( cd "$TMP" && sha256sum -c "$NODE_TARBALL.sha256" ) || die "Node checksum mismatch"
 else
-    warn "no .sha256 asset found; skipping checksum verification"
+    warn "no pinned NODE_SHA256 and no .sha256 asset; skipping checksum verification"
 fi
 
 mkdir -p "$TMP/node"
@@ -204,13 +214,24 @@ export PATH
 install_pkg() {
     pkg=$1
     version=$2
+    attempt=1
     log "installing $pkg@$version from $NPM_REGISTRY"
-    "$NPM" install -g \
-        --prefix "$NODE_PREFIX" \
-        --registry "$NPM_REGISTRY" \
-        --fetch-retries 3 \
-        --no-audit --no-fund \
-        "$pkg@$version"
+    while :; do
+        if "$NPM" install -g \
+            --prefix "$NODE_PREFIX" \
+            --registry "$NPM_REGISTRY" \
+            --fetch-retries 3 \
+            --no-audit --no-fund \
+            "$pkg@$version"; then
+            return 0
+        fi
+        if [ "$attempt" -ge 2 ]; then
+            die "npm install $pkg@$version failed twice"
+        fi
+        attempt=$((attempt + 1))
+        warn "npm install $pkg@$version failed; retrying once"
+        sleep 2
+    done
 }
 
 # Download a source archive. For private GitHub release assets the token is
@@ -286,6 +307,10 @@ install_codex_source() {
     if tar -tzf "$archive" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
         die "Codex source archive contains unsafe paths"
     fi
+    if tar -tvzf "$archive" | grep -E '^[lh]' \
+        | grep -Eq ' (->|link to) (/|\.\.(/|$))'; then
+        die "Codex source archive contains an unsafe link target"
+    fi
 
     src="$TMP/codex-src"
     mkdir -p "$src"
@@ -341,6 +366,12 @@ if [ "$CODEX_CHANNEL" = "npm" ]; then
     install_pkg "@openai/codex" "$CODEX_VERSION"
 fi
 install_pkg "opencode-ai" "$OPENCODE_VERSION"
+# dsh currently has no linux-loong64 node-pty prebuild, so npm may build it
+# with node-gyp.  Warn early instead of failing halfway through the install.
+for tool in gcc g++ make python3; do
+    command -v "$tool" >/dev/null 2>&1 \
+        || warn "$tool not found; dsh node-pty may fail to build from source"
+done
 install_pkg "@deepseek-ai/dsh" "$DSH_VERSION"
 
 CODEX_JS="$NODE_PREFIX/lib/node_modules/@openai/codex/bin/codex.js"

@@ -10,10 +10,14 @@ This repository collects four pieces of work:
 | [`ccswitch-lite/`](ccswitch-lite/) | Single-binary Go CLI + Web UI for switching Claude Desktop / Claude Code / Codex between private gateways | Working; 78 acceptance assertions pass |
 | [`zcode-tauri/`](zcode-tauri/) | Lightweight Tauri 2 shell around the ZCode Web UI | Working; release binary and `.deb` built |
 | [`install/`](install/) | Installers for ABI2.0 Node, `codex`, `opencode`, `dsh`, Claude Code, ZCode and cc-switch | Working; native CLIs, ZCode TUI, Claude Code 2.1.112 and cc-switch deb installers |
-| [`claude-desktop-repack/`](claude-desktop-repack/) | Scripts used for an unofficial Claude Desktop loong64 repack | Experimental; UI/login works, bundled Claude Code is x86-64 |
+| [`claude-desktop-repack/`](claude-desktop-repack/) | Historical repack scripts (ASAR reader, AMO test, old packaging metadata) | Historical; the maintained build and tested shim live in [`claude-desktop-loongarch`](https://github.com/yunix-intel/claude-desktop-loongarch) |
+
+`zcode-tauri/` and `loongarch-agent-builds/vendor/zcode-tauri` share the same
+source files; only the packaging variants differ. Check the invariant with
+`scripts/check-zcode-tauri-sync.sh /path/to/loongarch-agent-builds`.
 
 The official [`farion1231/cc-switch`](https://github.com/farion1231/cc-switch)
-Tauri app **has been built for loongarch64**: upstream v4.0.18 compiles with
+Tauri app **has been built for loongarch64**: upstream v4.0.19 compiles with
 Rust 1.97.1 and its full UI has been verified under Xvfb. The port lives in the
 private repository
 [`yunix-intel/cc-switch-loongarch`](https://github.com/yunix-intel/cc-switch-loongarch);
@@ -42,6 +46,14 @@ docs/                   ABI/Node, cc-switch port, Tauri, screenshots
 - Rust 1.85+, GTK 3 and WebKitGTK 4.1 development packages for `zcode-tauri`.
 - Root access for the installer (it writes `/opt` and `/usr/local/bin`).
 - `curl`, `xz`, `python3` (3.11+ for the acceptance test), `bash`.
+- For `install-claude-code-loongarch.sh`: `npm` next to the selected Node
+  runtime (Loongnix ships npm separately from the `node` package); the script
+  now finds `/opt/node24/bin/npm` even when `/usr/bin/npm` is absent.
+- For `dsh`: a C/C++ toolchain (`gcc`, `g++`, `make`, `python3`) and HTTPS
+  access to `unofficial-builds.nodejs.org`, because node-pty is built locally
+  when no loong64 prebuild exists. The installer retries once.
+- For GUI smoke tests: `xvfb`; for local version-watch runs: `gh` plus a token
+  with access to the private repositories.
 
 ## ccswitch-lite
 
@@ -170,23 +182,29 @@ ZCode 的 CLI 与两个 Tauri 桌面 deb 在私有
 
 ```sh
 # 默认 cli 通道；URL/SHA 已记录在 versions.env。
-# builds 仓库是私有的，需要能读取 release asset 的 token：
-sudo ZCODE_SOURCE_TOKEN=<github-token> ./install/install-zcode-loongarch.sh
+# builds 仓库是私有的，需要能读取 release asset 的 token。
+# 不要把 token 写在命令行上（会进 shell 历史和 ps）：先读入环境，再 sudo -E。
+read -r -s -p 'GitHub token: ' ZCODE_SOURCE_TOKEN; echo
+export ZCODE_SOURCE_TOKEN
+sudo -E ./install/install-zcode-loongarch.sh
+unset ZCODE_SOURCE_TOKEN
 
 # 或显式覆盖资产（适合其他 release）
-sudo ZCODE_CHANNEL=cli \
+read -r -s -p 'GitHub token: ' ZCODE_SOURCE_TOKEN; echo
+export ZCODE_SOURCE_TOKEN
+sudo -E ZCODE_CHANNEL=cli \
   ZCODE_CLI_URL=https://api.github.com/repos/yunix-intel/loongarch-agent-builds/releases/assets/<id> \
   ZCODE_CLI_SHA256=<64-hex> \
-  ZCODE_SOURCE_TOKEN=<private-asset-token> \
   ./install/install-zcode-loongarch.sh
+unset ZCODE_SOURCE_TOKEN
 
 # 轻量 Tauri 桌面（捆绑 CLI，依赖系统 Node >= 24）
-sudo ZCODE_CHANNEL=desktop ZCODE_DESKTOP_DEB_URL=... ZCODE_DESKTOP_DEB_SHA256=... \
-  ZCODE_SOURCE_TOKEN=... ./install/install-zcode-loongarch.sh
+sudo -E ZCODE_CHANNEL=desktop ZCODE_DESKTOP_DEB_URL=... ZCODE_DESKTOP_DEB_SHA256=... \
+  ./install/install-zcode-loongarch.sh
 
 # 自带 Node + CLI 的桌面版
-sudo ZCODE_CHANNEL=standalone ZCODE_STANDALONE_DEB_URL=... ZCODE_STANDALONE_DEB_SHA256=... \
-  ZCODE_SOURCE_TOKEN=... ./install/install-zcode-loongarch.sh
+sudo -E ZCODE_CHANNEL=standalone ZCODE_STANDALONE_DEB_URL=... ZCODE_STANDALONE_DEB_SHA256=... \
+  ./install/install-zcode-loongarch.sh
 ```
 
 资产 URL/SHA 也可以写进 `install/versions.env` 的 `ZCODE_*` 字段。
@@ -213,7 +231,10 @@ sudo ./install/install-claude-code-loongarch.sh
 官方 cc-switch 的 loong64 deb 在私有 `cc-switch-loongarch` release 中：
 
 ```sh
-sudo CC_SWITCH_SOURCE_TOKEN=<github-token> ./install/install-cc-switch-loongarch.sh
+read -r -s -p 'GitHub token: ' CC_SWITCH_SOURCE_TOKEN; echo
+export CC_SWITCH_SOURCE_TOKEN
+sudo -E ./install/install-cc-switch-loongarch.sh
+unset CC_SWITCH_SOURCE_TOKEN
 ```
 
 安装器校验 deb SHA-256 后通过 apt/dpkg 安装，启动器是 `/usr/bin/cc-switch`。
@@ -284,19 +305,24 @@ environment and is never committed. See
 
 ## Claude Desktop repack
 
-`claude-desktop-repack/` contains only our glue: an ASAR extractor, a JS
-replacement for `@ant/claude-native`, an AppRun, a desktop entry and Debian
-metadata. It contains **no** official `app.asar`, Electron binary or Anthropic
-payload. The repack can display the UI and honour the 3P gateway profile, but
-Code/Cowork sessions fail because the bundled Claude Code binary is x86-64.
-Not affiliated with Anthropic.
+`claude-desktop-repack/` is **historical**: it keeps the ASAR reader, the AMO
+sanity check and the old packaging metadata. The maintained build — including
+the tested `@ant/claude-native` shim (41/41 tests, fd-relative safe-fs,
+fail-closed socket) — is
+[`yunix-intel/claude-desktop-loongarch`](https://github.com/yunix-intel/claude-desktop-loongarch).
+The old minimal shim that used to live here was removed: it did not reject
+`..`/separators or symlinks and could escape the safe-fs root. Neither
+directory contains an official `app.asar`, Electron binary or Anthropic
+payload. Code/Cowork sessions still fail because the bundled Claude Code
+binary is x86-64. Not affiliated with Anthropic.
 
 ## Known limitations
 
 - `ccswitch-lite` keeps API keys in plaintext (0600 file), not a keyring.
 - Custom headers are written only for Codex; Desktop/Claude Code have no
   corresponding config slot.
-- The Web UI has no authentication and is loopback-only by design.
+- The Web UI has no user authentication; it binds to loopback and now rejects
+  non-loopback Host headers, cross-site Origins and non-JSON writes.
 - The official cc-switch loong64 port is built from upstream source and ships a
   `.deb`; see
   [`docs/cc-switch-loongarch.md`](docs/cc-switch-loongarch.md). `ccswitch-lite`

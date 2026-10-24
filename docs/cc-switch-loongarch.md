@@ -5,7 +5,7 @@ Tauri application now builds and runs on loongarch64. The port is maintained in
 the private repository
 [`yunix-intel/cc-switch-loongarch`](https://github.com/yunix-intel/cc-switch-loongarch).
 
-Status: upstream **v4.0.18** built natively on LoongArch. The complete UI was
+Status: upstream **v4.0.19** built natively on LoongArch. The complete UI was
 verified under Xvfb, including the Claude Code, Claude Desktop, Codex, Gemini,
 OpenCode, MCP, Skills and Prompts pages.
 
@@ -104,8 +104,11 @@ key). The `Upstream LoongArch Watch` workflow runs every six hours:
 ## `.deb` artifact
 
 ```text
-cc-switch_<upstream-version>~loong64.1_loong64.deb
+cc-switch_<upstream-version>.loong64.1_loong64.deb
 ```
+
+The package `Version` field uses `~` (`4.0.19~loong64.1`); GitHub normalizes
+`~` to `.` in asset filenames (`cc-switch_4.0.19.loong64.1_loong64.deb`).
 
 Contents:
 

@@ -156,6 +156,10 @@ install_cli() {
             /*|../*|*/../*) die "archive contains unsafe path: $p" ;;
         esac
     done < "$TMP/list.txt"
+    if tar -tvzf "$archive" | grep -E '^[lh]' \
+        | grep -Eq ' (->|link to) (/|\.\.(/|$))'; then
+        die "archive contains an unsafe link target"
+    fi
 
     mkdir -p "$TMP/extract"
     tar -xzf "$archive" -C "$TMP/extract"
@@ -181,10 +185,13 @@ install_cli() {
     chmod 0755 "$dest/bin/zcode.mjs"
 
     node_bin=$(choose_node)
-    [ -n "$node_bin" ] && [ -x "$node_bin" ] || die "Node.js >= 24 not found (set ZCODE_NODE)"
+    if [ -z "$node_bin" ] || [ ! -x "$node_bin" ]; then
+        die "Node.js >= 24 not found (set ZCODE_NODE)"
+    fi
     major=$("$node_bin" -p 'process.versions.node.split(".")[0]')
     [ "${major:-0}" -ge 24 ] || die "ZCode needs Node.js >= 24, found $("$node_bin" -v 2>/dev/null || echo unknown)"
 
+    mkdir -p "$BIN_DIR"
     wrapper="$BIN_DIR/zcode-${ZCODE_VERSION#v}"
     cat > "$wrapper" <<EOF
 #!/bin/sh
@@ -212,7 +219,7 @@ install_deb() {
     need dpkg-deb
     pkg_version=$(dpkg-deb -f "$deb" Version)
     case "$pkg_version" in
-        "${ZCODE_VERSION#v}"*) ;;
+        "${ZCODE_VERSION#v}"|"${ZCODE_VERSION#v}"[.~+-]*) ;;
         *) die "ZCode $kind deb is version $pkg_version, expected ${ZCODE_VERSION#v}*" ;;
     esac
     if command -v apt-get >/dev/null 2>&1; then

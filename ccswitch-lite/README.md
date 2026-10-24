@@ -187,6 +187,7 @@ Claude Desktop 使用的 Anthropic SDK 会在 `inferenceGatewayBaseUrl` 后追�
 `ccswitch web [--addr 127.0.0.1:18081]`
 
 - 仅允许回环地址（`127.0.0.1`/`::1`/`localhost`），拒绝 `0.0.0.0`，防止 API Key 管理界面暴露到网络；
+- 所有请求校验 `Host` 必须是回环地址；写请求必须是 `Content-Type: application/json`，且 `Origin`（如有）必须是回环地址。这样任意网页无法用跨站表单或 `text/plain` 请求改写供应商并诱导 Key 外泄，DNS rebinding 也会被 Host 检查拦下；
 - GET `/api/state` 返回供应商列表与 `maskedKey`，从不返回完整 Key；
 - 支持新增/编辑/删除、使用并应用、应用当前、恢复官方；
 - 无外部 JS/CSS/字体依赖，离线可用；无内置登录，仅适合单机使用。
@@ -243,13 +244,13 @@ on Linux”。这是 Desktop 自身在 LoongArch 上的限制，与 ccswitch-lit
 - Claude Desktop 模型名建议保持 `claude-*` 形式，非 Claude 名称可能被 Desktop 的校验器拒绝；
 - `restore` 是“撤销本工具写入”，不是时间机器；完整回滚请用 `.bak.*`；
 - JSON 文件会被重新序列化（缩进 2 空格、键顺序变化），语义与字段内容保持不变；
-- Web UI 无鉴权，仅绑定回环地址。
+- Web UI 无用户鉴权，仅绑定回环地址，并拒绝非回环 Host/跨站 Origin/非 JSON 写请求。
 
 ## 官方 cc-switch 的 Tauri 移植结论（已更正）
 
 早期“未移植、ring 硬阻塞”的结论**已被实测推翻**：
 
-- 官方 cc-switch **v4.0.18** 已在 loongarch64 上用 **Rust 1.97.1 直接构建成功**；
+- 官方 cc-switch **v4.0.19** 已在 loongarch64 上用 **Rust 1.97.1 直接构建成功**；
 - `ring 0.17.14` 能正常编译；其 `build.rs` 的 `panic!("unsupported arch")`
   只在 Windows x86 的 NASM 路径触发，Linux loong64 构建不会走到；
 - 构建命令必须带 `--features tauri/custom-protocol`，否则 webview 仍指向

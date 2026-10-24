@@ -210,8 +210,9 @@ gh_tags() {
 # Empty without a token; callers then keep the manifest pin instead of guessing.
 private_release_assets() {
     local repo=$1
-    [ -n "$BUILDS_TOKEN" ] || return 0
-    command -v gh >/dev/null 2>&1 || return 0
+    # 2 = no token at all; callers report unreadable instead of "up to date".
+    [ -n "$BUILDS_TOKEN" ] || return 2
+    command -v gh >/dev/null 2>&1 || return 2
     gh_builds_api "repos/$repo/releases?per_page=100" --paginate \
         --jq '.[] | .tag_name as $tag | .assets[]?
               | [$tag, .name, .url, (.digest // ""), (.state // "")] | @tsv' \
@@ -874,10 +875,10 @@ fi
         notes="${notes}- cc-switch：上游 release 是 ${CCSWITCH_RELEASE}，但没有可读取的 loong64 deb release；selected 保持 ${CCSWITCH_PIN}。"$'\n'
     fi
     if [ "$CCSWITCH_READ_FAILED" -eq 1 ]; then
-        notes="${notes}- cc-switch：AUTO_ALIGN_TOKEN 无法读取 \`${CCSWITCH_BUILDS_REPO}\`（HTTP 404/403）。请把该仓库加入 token 的 Repository access，否则 cc-switch 不会自动对齐；selected 保持 ${CCSWITCH_PIN}。"$'\n'
+        notes="${notes}- cc-switch：未配置 AUTO_ALIGN_TOKEN，或 token 无权读取 \`${CCSWITCH_BUILDS_REPO}\`（HTTP 404/403）。请配置 token 并把该仓库加入 Repository access，否则 cc-switch 不会自动对齐；selected 保持 ${CCSWITCH_PIN}。"$'\n'
     fi
     if [ "$ZCODE_READ_FAILED" -eq 1 ]; then
-        notes="${notes}- ZCode：AUTO_ALIGN_TOKEN 无法读取 \`${BUILDS_REPO}\` 的 release；selected 保持 ${ZCODE_PIN}。"$'\n'
+        notes="${notes}- ZCode：未配置 AUTO_ALIGN_TOKEN，或 token 无权读取 \`${BUILDS_REPO}\` 的 release；selected 保持 ${ZCODE_PIN}。"$'\n'
     fi
     if [ "$CODEX_STATUS" = query-failed ] || [ "$OPENCODE_STATUS" = query-failed ] \
         || [ "$DSH_STATUS" = query-failed ] || [ "$CLAUDE_STATUS" = query-failed ] \

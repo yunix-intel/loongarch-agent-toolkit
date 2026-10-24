@@ -59,7 +59,6 @@ case "$CLAUDE_CODE_LINK_DEFAULT" in
     *) die "CLAUDE_CODE_LINK_DEFAULT must be 0 or 1" ;;
 esac
 
-need npm
 need install
 
 if [ -z "$CLAUDE_CODE_NODE" ]; then
@@ -67,11 +66,16 @@ if [ -z "$CLAUDE_CODE_NODE" ]; then
         if [ -x "$candidate" ]; then CLAUDE_CODE_NODE=$candidate; break; fi
     done
 fi
-[ -n "$CLAUDE_CODE_NODE" ] && [ -x "$CLAUDE_CODE_NODE" ] || die "no Node.js runtime found; set CLAUDE_CODE_NODE"
+if [ -z "$CLAUDE_CODE_NODE" ] || [ ! -x "$CLAUDE_CODE_NODE" ]; then
+    die "no Node.js runtime found; set CLAUDE_CODE_NODE"
+fi
 
 NODE_DIR=$(dirname "$CLAUDE_CODE_NODE")
 NPM="$NODE_DIR/npm"
-[ -x "$NPM" ] || NPM=$(command -v npm)
+[ -x "$NPM" ] || NPM=$(command -v npm || true)
+if [ -z "$NPM" ] || [ ! -x "$NPM" ]; then
+    die "npm not found next to $CLAUDE_CODE_NODE or on PATH; install npm or set CLAUDE_CODE_NODE"
+fi
 PATH="$NODE_DIR:$PATH"
 export PATH
 
@@ -101,6 +105,7 @@ if [ "$CLAUDE_CODE_LINK_DEFAULT" = "1" ]; then
 else
     wrapper="$BIN_DIR/claude-${CLAUDE_CODE_VERSION}"
 fi
+mkdir -p "$BIN_DIR"
 cat > "$wrapper" <<EOF
 #!/bin/sh
 export USE_BUILTIN_RIPGREP=0
