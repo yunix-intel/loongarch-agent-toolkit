@@ -17,8 +17,8 @@
 | OpenCode | `opencode-linux-loong64` 的 `latest` | `waiting-for-loong64-port` |
 | DSH | Loongnix registry 的 `@deepseek-ai/dsh@latest` | `waiting-upstream-sync` |
 | Claude Code | npm 上**最后一个仍包含 `cli.js`** 的版本 | `native-only` |
-| ZCode | `zai-org/ZCode` 的最新 semver tag | `tag-ahead-of-release` |
-| cc-switch | `farion1231/cc-switch` 的最新 GitHub release | `up-to-date` |
+| ZCode | `loongarch-agent-builds` 中资产齐全的最新 `zcode-v<ver>` release | `waiting-for-loongarch-build` |
+| cc-switch | `cc-switch-loongarch` 中最新带 deb 的 `loongarch-v<ver>` release | `waiting-for-loongarch-release` |
 
 只有当 Loongnix（或源码构建）真的产出了 loong64 版本，workflow 才会把
 对应通道的 selected 往上调。上游发了新版但没有 loong64 构建时，issue 会标注
@@ -45,7 +45,14 @@ release 资产需 `CODEX_SOURCE_TOKEN`（或 `GITHUB_TOKEN`），URL 用 API ass
 `AUTO_ALIGN_TOKEN` 配置后，watch 会用该 token 读取 builds 仓库（含 draft
 release），发现更高版本时同步更新上述三个 source 字段；没有 token 时 issue
 标注 `source build available (private; set AUTO_ALIGN_TOKEN or URL)`，不会
-改动 npm pin。
+改动 npm pin。同一个 token 也用于读取私有 `cc-switch-loongarch` 仓库。
+
+**版本号、URL 和 SHA-256 永远作为一个整体更新。** 只看上游版本号就改
+`ZCODE_TAG`/`CC_SWITCH_VERSION`、却保留旧资产的 URL/SHA，会让安装器把旧
+deb 当成新版本安装。watch 现在先解析出与版本对应的 asset（draft 也算），
+解析不到就只报告 `waiting-for-loongarch-build` /
+`waiting-for-loongarch-release`，不改清单。安装器另外校验 deb 的
+`Version` 字段 / CLI 的 `BUILDINFO.txt` tag，作为第二道防线。
 
 ## Claude Code：native-only 之后不再自动升级
 
@@ -59,12 +66,18 @@ release），发现更高版本时同步更新上述三个 source 字段；没�
 `native-only / box64-only`，不会自动写入清单。如果将来上游恢复 JS 入口，二分
 查找会自动把 selected 抬到那个版本。
 
-## ZCode：跟 tag，不跟 GitHub release
+## ZCode：跟已构建的 release，不跟 tag
 
 `zai-org/ZCode` 的 GitHub release 页面滞后于实际的 semver tag（当前 tag
-`v3.15.1`，release 仍是 `v3.14.3`）。ZCode 的可用版本以 tag 为准，所以
-selected 取 tag 的最大 semver；release tag 只作为 “upstream” 列展示，并在
-落后时标记 `tag-ahead-of-release`。
+`v3.15.1`，release 仍是 `v3.14.3`）。tag 本身只说明上游发了版本，不代表
+LoongArch 构建已经产出，所以 selected 取 `loongarch-agent-builds` 中**三件
+资产齐全**（CLI tarball、thin deb、standalone deb）的最新 `zcode-v<ver>`
+release。上游 tag 只作为 “upstream” 列展示：
+
+- tag 没有对应构建 → `waiting-for-loongarch-build`，pin 不动；
+- 构建版本领先 pin → `update-available`，PR 同时更新 `ZCODE_TAG`、
+  `ZCODE_VERSION` 和六个 URL/SHA 字段；
+- 版本相同但 asset id/digest 变了（release 重建）→ 刷新 URL/SHA。
 
 `install/versions.env` 还记录 `ZCODE_CHANNEL=cli|desktop|standalone` 和对应的
 资产 URL/SHA。`install/install-zcode-loongarch.sh` 可以安装：

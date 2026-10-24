@@ -125,6 +125,38 @@ esac
 [ "$(manifest_value ZCODE_VERSION)" = "$(manifest_value ZCODE_TAG)" ] \
     || fail_msg "ZCODE_VERSION must equal ZCODE_TAG"
 
+case "$(manifest_value ZCODE_TAG)" in
+    v[0-9]*.[0-9]*.[0-9]*) ;;
+    *) fail_msg "ZCODE_TAG must look like vX.Y.Z" ;;
+esac
+case "$(manifest_value CC_SWITCH_VERSION)" in
+    v[0-9]*.[0-9]*.[0-9]*) ;;
+    *) fail_msg "CC_SWITCH_VERSION must look like vX.Y.Z" ;;
+esac
+
+# Asset URL/SHA pins are written together by the version watch.  A URL without
+# a digest (or the reverse) means the manifest was edited half-way.
+for pair in \
+    "ZCODE_CLI_URL ZCODE_CLI_SHA256" \
+    "ZCODE_DESKTOP_DEB_URL ZCODE_DESKTOP_DEB_SHA256" \
+    "ZCODE_STANDALONE_DEB_URL ZCODE_STANDALONE_DEB_SHA256" \
+    "CC_SWITCH_DEB_URL CC_SWITCH_DEB_SHA256"; do
+    # shellcheck disable=SC2086
+    set -- $pair
+    url=$(manifest_value "$1")
+    sha=$(manifest_value "$2")
+    if [ -n "$url" ] && [ -z "$sha" ]; then
+        fail_msg "$2 must be set when $1 is set"
+    elif [ -z "$url" ] && [ -n "$sha" ]; then
+        fail_msg "$1 must be set when $2 is set"
+    fi
+    case "$sha" in
+        '') ;;
+        *[!0-9a-fA-F]*) fail_msg "$2 must be a hex digest" ;;
+        *) [ "${#sha}" -eq 64 ] || fail_msg "$2 must be 64 hex characters" ;;
+    esac
+done
+
 # --- 2. Installer fallbacks -------------------------------------------------
 # The block is machine-managed; the keys map to manifest keys by suffix.
 extract_fallback() {

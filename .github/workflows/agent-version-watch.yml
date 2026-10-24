@@ -52,6 +52,7 @@ jobs:
           GITHUB_RUN_ID: ${{ github.run_id }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           AUTO_ALIGN_TOKEN: ${{ secrets.AUTO_ALIGN_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
           # A PAT with access to the private builds repo lets the watch read
@@ -180,6 +181,8 @@ jobs:
 
       - name: Write step summary
         if: always()
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           {
             echo "## Agent version check $(date -u +%F)"
@@ -190,7 +193,9 @@ jobs:
               echo "Version check did not produce a table; see the job log."
             fi
             echo
-            if [ -f changes.md ]; then
+            if [ -f changes.md ] && [ "${DRY_RUN:-false}" = "true" ]; then
+              echo "Alignment changes were computed but not pushed (dry_run=true)."
+            elif [ -f changes.md ]; then
               echo "Alignment changes were prepared; see the auto/version-alignment PR."
             else
               echo "No alignment changes: no PR created."

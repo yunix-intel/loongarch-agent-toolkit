@@ -134,13 +134,14 @@ overrides the install prefix. The system Node is untouched.
 | OpenCode | `1.19.0` | `opencode-linux-loong64` 最新版 |
 | DSH | `0.2.1-rc.2` | Loongnix registry 最新版 |
 | Claude Code | `2.1.112` | 最后一个 npm tarball 仍带 `cli.js` 的版本 |
-| ZCode | `v3.15.1` | `zai-org/ZCode` 最新 semver tag（非 GitHub release） |
-| cc-switch | `v4.0.18` | `farion1231/cc-switch` 最新 release |
+| ZCode | `v3.15.1` | builds 仓库中资产齐全的最新 release（tag 仅作 upstream） |
+| cc-switch | `v4.0.18` | 私有 builds 仓库中最新的 loong64 deb release |
 <!-- agent-versions:end -->
 
 `selected` 的含义是“当前龙芯上可用的最新版”，不一定是上游 latest。版本
-选择规则、Claude Code native-only 的处理和 ZCode 为什么跟 tag 而不是
-release，见 [`docs/version-policy.md`](docs/version-policy.md)。
+选择规则、Claude Code native-only 的处理，以及 ZCode / cc-switch 为什么跟
+已构建的 release 而不是上游 tag，见
+[`docs/version-policy.md`](docs/version-policy.md)。
 
 ### Codex: npm vs source
 

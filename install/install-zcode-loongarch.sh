@@ -163,6 +163,13 @@ install_cli() {
     [ -n "$cli_root" ] || die "archive does not contain dist/zcode"
     [ -f "$cli_root/bin/zcode.mjs" ] || die "archive is missing bin/zcode.mjs"
 
+    # The tarball records the upstream tag it was built from; catch a manifest
+    # that names one version while pinning another version's archive.
+    buildinfo=$(find "$TMP/extract" -maxdepth 2 -type f -name BUILDINFO.txt | head -n 1)
+    [ -n "$buildinfo" ] || die "archive is missing BUILDINFO.txt"
+    grep -qx "Upstream tag: $ZCODE_VERSION" "$buildinfo" \
+        || die "CLI archive build tag does not match $ZCODE_VERSION"
+
     dest="$ZCODE_PREFIX/zcode-${ZCODE_VERSION#v}"
     if [ -e "$dest" ]; then
         backup="$dest.bak.$(date +%Y%m%d-%H%M%S)"
@@ -202,6 +209,12 @@ install_deb() {
     log "downloading ZCode $kind deb $ZCODE_VERSION"
     download "$url" "$deb"
     verify_sha "$deb" "$sha"
+    need dpkg-deb
+    pkg_version=$(dpkg-deb -f "$deb" Version)
+    case "$pkg_version" in
+        "${ZCODE_VERSION#v}"*) ;;
+        *) die "ZCode $kind deb is version $pkg_version, expected ${ZCODE_VERSION#v}*" ;;
+    esac
     if command -v apt-get >/dev/null 2>&1; then
         apt-get install -y "$deb" || die "apt-get install failed for $kind deb"
     else

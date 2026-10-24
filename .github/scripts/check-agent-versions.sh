@@ -35,6 +35,8 @@ LOONG_REGISTRY=${LOONG_REGISTRY:-https://registry.loongnix.cn:5873}
 ZCODE_REPO=${ZCODE_REPO:-zai-org/ZCode}
 CCSWITCH_REPO=${CCSWITCH_REPO:-farion1231/cc-switch}
 BUILDS_REPO=${BUILDS_REPO:-yunix-intel/loongarch-agent-builds}
+CCSWITCH_BUILDS_REPO=${CCSWITCH_BUILDS_REPO:-yunix-intel/cc-switch-loongarch}
+DRY_RUN=${DRY_RUN:-false}
 TODAY=${TODAY:-$(date -u +%Y-%m-%d)}
 TOKEN=${GH_TOKEN:-${GITHUB_TOKEN:-}}
 # Only an explicitly supplied GH_TOKEN (AUTO_ALIGN_TOKEN in CI) may read the
@@ -203,6 +205,100 @@ gh_tags() {
         --paginate --jq '.[].name' 2>/dev/null || true
 }
 
+# Release assets of a private repo, drafts included, as TSV:
+#   tag <TAB> asset name <TAB> asset API URL <TAB> sha256 <TAB> state
+# Empty without a token; callers then keep the manifest pin instead of guessing.
+private_release_assets() {
+    local repo=$1
+    [ -n "$BUILDS_TOKEN" ] || return 0
+    command -v gh >/dev/null 2>&1 || return 0
+    gh_builds_api "repos/$repo/releases?per_page=100" --paginate \
+        --jq '.[] | .tag_name as $tag | .assets[]?
+              | [$tag, .name, .url, (.digest // ""), (.state // "")] | @tsv' \
+        2>/dev/null || true
+}
+
+# Newest cc-switch loong64 deb in the private builds repo.
+# Prints: version <TAB> asset API URL <TAB> sha256 <TAB> asset_name
+# The version and the deb move as one unit: a release that only bumped the
+# upstream tag (no matching deb) is ignored rather than pinned half-way.
+ccswitch_build_release() {
+    local tsv="$TMP/ccswitch-assets.tsv"
+    private_release_assets "$CCSWITCH_BUILDS_REPO" > "$tsv"
+    [ -s "$tsv" ] || return 0
+    "$PYTHON" -I - "$tsv" <<'PY'
+import re, sys
+best = None
+with open(sys.argv[1], encoding="utf-8") as fh:
+    for line in fh:
+        parts = line.rstrip("\n").split("\t")
+        if len(parts) != 5:
+            continue
+        tag, name, url, digest, state = parts
+        m = re.match(r"^loongarch-(v[0-9]+\.[0-9]+\.[0-9]+)$", tag)
+        if not m or state != "uploaded":
+            continue
+        if not re.match(r"^cc-switch_[0-9.]+.*_loong64[.]deb$", name):
+            continue
+        sha = digest[7:] if digest.startswith("sha256:") else digest
+        if len(sha) != 64:
+            continue
+        order = tuple(int(x) for x in m.group(1)[1:].split("."))
+        if best is None or order > best[0]:
+            best = (order, m.group(1), url, sha, name)
+if best:
+    print("\t".join(best[1:]))
+PY
+}
+
+# Newest builds release carrying all three ZCode loong64 assets.
+# Prints: version <TAB> cli_url <TAB> cli_sha <TAB> desktop_url <TAB>
+#         desktop_sha <TAB> standalone_url <TAB> standalone_sha
+# Tags upstream can run ahead of the builds; only a complete, uploaded asset
+# set is selectable, so the manifest never points at a missing file.
+zcode_build_release() {
+    local tsv="$TMP/zcode-assets.tsv"
+    private_release_assets "$BUILDS_REPO" > "$tsv"
+    [ -s "$tsv" ] || return 0
+    "$PYTHON" -I - "$tsv" <<'PY'
+import re, sys
+wanted = {
+    "cli": re.compile(r"^zcode-cli_[0-9.]+_loong64[.]tar[.]gz$"),
+    "desktop": re.compile(r"^zcode-desktop_[0-9.]+_loong64[.]deb$"),
+    "standalone": re.compile(r"^zcode-desktop-standalone_[0-9.]+_loong64[.]deb$"),
+}
+releases = {}
+with open(sys.argv[1], encoding="utf-8") as fh:
+    for line in fh:
+        parts = line.rstrip("\n").split("\t")
+        if len(parts) != 5:
+            continue
+        tag, name, url, digest, state = parts
+        m = re.match(r"^zcode-(v[0-9]+\.[0-9]+\.[0-9]+)$", tag)
+        if not m or state != "uploaded":
+            continue
+        sha = digest[7:] if digest.startswith("sha256:") else digest
+        if len(sha) != 64:
+            continue
+        for kind, rx in wanted.items():
+            if rx.match(name):
+                releases.setdefault(m.group(1), {})[kind] = (url, sha)
+best = None
+for version, assets in releases.items():
+    if set(assets) != set(wanted):
+        continue
+    order = tuple(int(x) for x in version[1:].split("."))
+    if best is None or order > best[0]:
+        best = (order, version, assets)
+if best:
+    _, version, assets = best
+    fields = [version]
+    for kind in ("cli", "desktop", "standalone"):
+        fields.extend(assets[kind])
+    print("\t".join(fields))
+PY
+}
+
 gh_latest_release() {
     command -v gh >/dev/null 2>&1 || return 0
     gh_api "repos/$1/releases/latest" \
@@ -358,6 +454,29 @@ CLAUDE_JS=$(claude_js_latest)
 ZCODE_RELEASE=$(gh_latest_release "$ZCODE_REPO")
 ZCODE_TAGS=$(gh_tags "$ZCODE_REPO" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)
 CCSWITCH_RELEASE=$(gh_latest_release "$CCSWITCH_REPO")
+ZCODE_BUILD_TSV=$(zcode_build_release)
+CCSWITCH_BUILD_TSV=$(ccswitch_build_release)
+
+ZCODE_BUILD=$(printf '%s' "$ZCODE_BUILD_TSV" | cut -f1)
+ZCODE_BUILD_CLI_URL=$(printf '%s' "$ZCODE_BUILD_TSV" | cut -f2)
+ZCODE_BUILD_CLI_SHA=$(printf '%s' "$ZCODE_BUILD_TSV" | cut -f3)
+ZCODE_BUILD_DESKTOP_URL=$(printf '%s' "$ZCODE_BUILD_TSV" | cut -f4)
+ZCODE_BUILD_DESKTOP_SHA=$(printf '%s' "$ZCODE_BUILD_TSV" | cut -f5)
+ZCODE_BUILD_STANDALONE_URL=$(printf '%s' "$ZCODE_BUILD_TSV" | cut -f6)
+ZCODE_BUILD_STANDALONE_SHA=$(printf '%s' "$ZCODE_BUILD_TSV" | cut -f7)
+
+CCSWITCH_BUILD=$(printf '%s' "$CCSWITCH_BUILD_TSV" | cut -f1)
+CCSWITCH_BUILD_URL=$(printf '%s' "$CCSWITCH_BUILD_TSV" | cut -f2)
+CCSWITCH_BUILD_SHA=$(printf '%s' "$CCSWITCH_BUILD_TSV" | cut -f3)
+CCSWITCH_BUILD_NAME=$(printf '%s' "$CCSWITCH_BUILD_TSV" | cut -f4)
+ZCODE_CLI_URL_PIN=$(manifest_value ZCODE_CLI_URL)
+ZCODE_CLI_SHA_PIN=$(manifest_value ZCODE_CLI_SHA256)
+ZCODE_DESKTOP_URL_PIN=$(manifest_value ZCODE_DESKTOP_DEB_URL)
+ZCODE_DESKTOP_SHA_PIN=$(manifest_value ZCODE_DESKTOP_DEB_SHA256)
+ZCODE_STANDALONE_URL_PIN=$(manifest_value ZCODE_STANDALONE_DEB_URL)
+ZCODE_STANDALONE_SHA_PIN=$(manifest_value ZCODE_STANDALONE_DEB_SHA256)
+CCSWITCH_URL_PIN=$(manifest_value CC_SWITCH_DEB_URL)
+CCSWITCH_SHA_PIN=$(manifest_value CC_SWITCH_DEB_SHA256)
 
 # The npm channel stays the default and keeps tracking the loong64 port; the
 # source build is reported separately unless CODEX_CHANNEL=source.
@@ -368,8 +487,8 @@ fi
 OPENCODE_SEL=$OPENCODE_LOONG
 DSH_SEL=$DSH_LOONG
 CLAUDE_SEL=$CLAUDE_JS
-ZCODE_SEL=$ZCODE_TAGS
-CCSWITCH_SEL=$CCSWITCH_RELEASE
+ZCODE_SEL=${ZCODE_BUILD:-$ZCODE_PIN}
+CCSWITCH_SEL=${CCSWITCH_BUILD:-$CCSWITCH_PIN}
 
 if [ "$CODEX_CHANNEL_PIN" = "source" ]; then
     if [ -z "$CODEX_SEL" ]; then
@@ -385,7 +504,7 @@ fi
 OPENCODE_STATUS=$(status_of "$OPENCODE_PIN" "$OPENCODE_SEL" "$OPENCODE_UP" waiting-for-loong64-port)
 DSH_STATUS=$(status_of "$DSH_PIN" "$DSH_SEL" "$DSH_UP" waiting-upstream-sync)
 CLAUDE_STATUS=$(status_of "$CLAUDE_PIN" "$CLAUDE_SEL" "$CLAUDE_UP" native-only)
-CCSWITCH_STATUS=$(status_of "$CCSWITCH_PIN" "$CCSWITCH_SEL" "$CCSWITCH_RELEASE" upstream-ahead)
+CCSWITCH_STATUS=$(status_of "$CCSWITCH_PIN" "$CCSWITCH_SEL" "$CCSWITCH_RELEASE" waiting-for-loongarch-release)
 
 if [ -n "$CODEX_SOURCE_NEW" ]; then
     if [ "$CODEX_CHANNEL_PIN" = "source" ]; then
@@ -403,14 +522,23 @@ else
     CODEX_SOURCE_STATUS='unset'
 fi
 
-# ZCode is selected from tags, while "upstream" is the GitHub release.  Report
-# a release that lags its own tags even when the pin is already correct.
-if [ -z "$ZCODE_SEL" ]; then
-    ZCODE_STATUS='query-failed'
-elif version_gt "$ZCODE_SEL" "$ZCODE_PIN"; then
+# ZCode is selected from the newest complete builds release, while "upstream"
+# is the GitHub release / tag.  A tag that has not been built (or whose build
+# is not visible without AUTO_ALIGN_TOKEN) never moves the pin.
+if [ -z "$ZCODE_BUILD" ]; then
+    if [ -z "$ZCODE_TAGS" ] && [ -z "$ZCODE_RELEASE" ]; then
+        ZCODE_STATUS='query-failed'
+    elif version_gt "$ZCODE_TAGS" "$ZCODE_PIN"; then
+        ZCODE_STATUS='waiting-for-loongarch-build'
+    else
+        ZCODE_STATUS='up-to-date'
+    fi
+elif version_gt "$ZCODE_BUILD" "$ZCODE_PIN"; then
     ZCODE_STATUS='update-available'
-elif [ -n "$ZCODE_RELEASE" ] && [ "$ZCODE_RELEASE" != "$ZCODE_SEL" ] \
-    && ! version_gt "$ZCODE_RELEASE" "$ZCODE_SEL"; then
+elif version_gt "$ZCODE_TAGS" "$ZCODE_BUILD"; then
+    ZCODE_STATUS='waiting-for-loongarch-build'
+elif [ -n "$ZCODE_RELEASE" ] && [ "$ZCODE_RELEASE" != "$ZCODE_BUILD" ] \
+    && ! version_gt "$ZCODE_RELEASE" "$ZCODE_BUILD"; then
     ZCODE_STATUS='tag-ahead-of-release'
 else
     ZCODE_STATUS='up-to-date'
@@ -452,11 +580,11 @@ fi
     printf '| Claude Code | %s | %s (cli.js) | %s | `%s` |\n' \
         "$(show_ver "$CLAUDE_UP")" "$(show_ver "$CLAUDE_JS")" \
         "$(show_ver "$CLAUDE_SEL")" "$CLAUDE_STATUS"
-    printf '| ZCode (tags) | %s (release) | %s | %s | `%s` |\n' \
-        "$(show_ver "$ZCODE_RELEASE")" "$(show_ver "$ZCODE_TAGS")" \
+    printf '| ZCode (tags) | %s (release) | %s (builds) | %s | `%s` |\n' \
+        "$(show_ver "$ZCODE_RELEASE")" "$(show_ver "$ZCODE_BUILD")" \
         "$(show_ver "$ZCODE_SEL")" "$ZCODE_STATUS"
-    printf '| cc-switch | %s | %s | %s | `%s` |\n' \
-        "$(show_ver "$CCSWITCH_RELEASE")" "$(show_ver "$CCSWITCH_RELEASE")" \
+    printf '| cc-switch | %s | %s (builds) | %s | `%s` |\n' \
+        "$(show_ver "$CCSWITCH_RELEASE")" "$(show_ver "$CCSWITCH_BUILD")" \
         "$(show_ver "$CCSWITCH_SEL")" "$CCSWITCH_STATUS"
 } > "$OUT_TABLE"
 
@@ -481,8 +609,6 @@ consider CODEX_VERSION '@openai/codex' "$CODEX_PIN" "$CODEX_LOONG" "$CODEX_NOTE"
 consider OPENCODE_VERSION 'opencode-ai' "$OPENCODE_PIN" "$OPENCODE_SEL" 'opencode-linux-loong64 latest'
 consider DSH_VERSION '@deepseek-ai/dsh' "$DSH_PIN" "$DSH_SEL" 'Loongnix registry latest'
 consider CLAUDE_CODE_VERSION '@anthropic-ai/claude-code' "$CLAUDE_PIN" "$CLAUDE_SEL" 'newest tarball containing cli.js'
-consider ZCODE_TAG 'ZCode' "$ZCODE_PIN" "$ZCODE_SEL" 'newest semver tag'
-consider CC_SWITCH_VERSION 'cc-switch' "$CCSWITCH_PIN" "$CCSWITCH_SEL" 'latest GitHub release'
 
 set_manifest_value() {
     local key=$1 value=$2 escaped
@@ -530,6 +656,68 @@ if [ "$SOURCE_CHANGED" -eq 1 ]; then
         "$SOURCE_OLD" "$SOURCE_NEW" "$SOURCE_REASON" >> "$TMP/changes.tsv"
 fi
 
+# ZCode: the tag, version and all three asset pins change together.  A tag
+# without a complete builds release leaves the manifest untouched.
+if [ -n "$ZCODE_BUILD" ]; then
+    ZCODE_CHANGED=0
+    if version_gt "$ZCODE_BUILD" "$ZCODE_PIN"; then
+        ZCODE_CHANGED=1
+        ZCODE_OLD=$ZCODE_PIN
+        ZCODE_NEW=$ZCODE_BUILD
+        ZCODE_REASON="builds release zcode-$ZCODE_BUILD"
+    elif [ "$ZCODE_BUILD" = "$ZCODE_PIN" ] \
+        && { [ "$ZCODE_BUILD_CLI_URL" != "$ZCODE_CLI_URL_PIN" ] \
+            || [ "$ZCODE_BUILD_CLI_SHA" != "$ZCODE_CLI_SHA_PIN" ] \
+            || [ "$ZCODE_BUILD_DESKTOP_URL" != "$ZCODE_DESKTOP_URL_PIN" ] \
+            || [ "$ZCODE_BUILD_DESKTOP_SHA" != "$ZCODE_DESKTOP_SHA_PIN" ] \
+            || [ "$ZCODE_BUILD_STANDALONE_URL" != "$ZCODE_STANDALONE_URL_PIN" ] \
+            || [ "$ZCODE_BUILD_STANDALONE_SHA" != "$ZCODE_STANDALONE_SHA_PIN" ]; }; then
+        ZCODE_CHANGED=1
+        ZCODE_OLD='stale URL/SHA'
+        ZCODE_NEW='refreshed'
+        ZCODE_REASON="builds release zcode-$ZCODE_BUILD"
+    fi
+    if [ "$ZCODE_CHANGED" -eq 1 ]; then
+        CHANGED=1
+        set_manifest_value ZCODE_TAG "$ZCODE_BUILD"
+        set_manifest_value ZCODE_VERSION "$ZCODE_BUILD"
+        set_manifest_value ZCODE_CLI_URL "$ZCODE_BUILD_CLI_URL"
+        set_manifest_value ZCODE_CLI_SHA256 "$ZCODE_BUILD_CLI_SHA"
+        set_manifest_value ZCODE_DESKTOP_DEB_URL "$ZCODE_BUILD_DESKTOP_URL"
+        set_manifest_value ZCODE_DESKTOP_DEB_SHA256 "$ZCODE_BUILD_DESKTOP_SHA"
+        set_manifest_value ZCODE_STANDALONE_DEB_URL "$ZCODE_BUILD_STANDALONE_URL"
+        set_manifest_value ZCODE_STANDALONE_DEB_SHA256 "$ZCODE_BUILD_STANDALONE_SHA"
+        printf 'ZCODE_ASSETS\tZCode\t%s\t%s\t%s\n' \
+            "$ZCODE_OLD" "$ZCODE_NEW" "$ZCODE_REASON" >> "$TMP/changes.tsv"
+    fi
+fi
+
+# cc-switch: same rule -- the manifest version always names the deb it pins.
+if [ -n "$CCSWITCH_BUILD" ]; then
+    CCSWITCH_CHANGED=0
+    if version_gt "$CCSWITCH_BUILD" "$CCSWITCH_PIN"; then
+        CCSWITCH_CHANGED=1
+        CCSWITCH_OLD=$CCSWITCH_PIN
+        CCSWITCH_NEW=$CCSWITCH_BUILD
+        CCSWITCH_REASON="loongarch release ${CCSWITCH_BUILD_NAME:-$CCSWITCH_BUILD}"
+    elif [ "$CCSWITCH_BUILD" = "$CCSWITCH_PIN" ] \
+        && { [ "$CCSWITCH_BUILD_URL" != "$CCSWITCH_URL_PIN" ] \
+            || [ "$CCSWITCH_BUILD_SHA" != "$CCSWITCH_SHA_PIN" ]; }; then
+        CCSWITCH_CHANGED=1
+        CCSWITCH_OLD='stale URL/SHA'
+        CCSWITCH_NEW='refreshed'
+        CCSWITCH_REASON="loongarch release ${CCSWITCH_BUILD_NAME:-$CCSWITCH_BUILD}"
+    fi
+    if [ "$CCSWITCH_CHANGED" -eq 1 ]; then
+        CHANGED=1
+        set_manifest_value CC_SWITCH_VERSION "$CCSWITCH_BUILD"
+        set_manifest_value CC_SWITCH_DEB_URL "$CCSWITCH_BUILD_URL"
+        set_manifest_value CC_SWITCH_DEB_SHA256 "$CCSWITCH_BUILD_SHA"
+        printf 'CC_SWITCH_PIN\tcc-switch\t%s\t%s\t%s\n' \
+            "$CCSWITCH_OLD" "$CCSWITCH_NEW" "$CCSWITCH_REASON" >> "$TMP/changes.tsv"
+    fi
+fi
+
 # README block, rendered from the manifest (after updates).
 render_readme_block() {
     printf '<!-- agent-versions:begin -->\n'
@@ -541,8 +729,8 @@ render_readme_block() {
     printf '| OpenCode | `%s` | `opencode-linux-loong64` 最新版 |\n' "$(manifest_value OPENCODE_VERSION)"
     printf '| DSH | `%s` | Loongnix registry 最新版 |\n' "$(manifest_value DSH_VERSION)"
     printf '| Claude Code | `%s` | 最后一个 npm tarball 仍带 `cli.js` 的版本 |\n' "$(manifest_value CLAUDE_CODE_VERSION)"
-    printf '| ZCode | `%s` | `zai-org/ZCode` 最新 semver tag（非 GitHub release） |\n' "$(manifest_value ZCODE_TAG)"
-    printf '| cc-switch | `%s` | `farion1231/cc-switch` 最新 release |\n' "$(manifest_value CC_SWITCH_VERSION)"
+    printf '| ZCode | `%s` | builds 仓库中资产齐全的最新 release（tag 仅作 upstream） |\n' "$(manifest_value ZCODE_TAG)"
+    printf '| cc-switch | `%s` | 私有 builds 仓库中最新的 loong64 deb release |\n' "$(manifest_value CC_SWITCH_VERSION)"
     printf '<!-- agent-versions:end -->\n'
 }
 
@@ -565,14 +753,11 @@ if [ "$CHANGED" -eq 1 ]; then
     while IFS=$'\t' read -r key name old new reason; do
         [ -n "$key" ] || continue
         case "$key" in
-            CODEX_SOURCE) continue ;;
+            CODEX_SOURCE|ZCODE_ASSETS|CC_SWITCH_PIN) continue ;;
         esac
         set_manifest_value "$key" "$new"
         set_fallback_value "$key" "$new"
     done < "$TMP/changes.tsv"
-    if version_gt "$ZCODE_SEL" "$ZCODE_PIN"; then
-        set_manifest_value ZCODE_VERSION "$ZCODE_SEL"
-    fi
     replace_readme_block
 else
     rm -f "$OUT_CHANGES"
@@ -622,8 +807,13 @@ fi
 
     if [ "$CHANGED" -eq 1 ]; then
         printf '### 自动对齐\n\n'
-        printf '有 %s 项可升级，workflow 已更新 `install/versions.env`、installer fallback 和 README 表，并推送到 `auto/version-alignment` 分支创建/更新 PR。\n\n' \
-            "$(wc -l < "$TMP/changes.tsv" | tr -d ' ')"
+        if [ "$DRY_RUN" = true ]; then
+            printf '有 %s 项可升级；`dry_run=true`，已生成变更但未推送分支、未创建/更新 PR。\n\n' \
+                "$(wc -l < "$TMP/changes.tsv" | tr -d ' ')"
+        else
+            printf '有 %s 项可升级，workflow 已更新 `install/versions.env`、installer fallback 和 README 表，并推送到 `auto/version-alignment` 分支创建/更新 PR。\n\n' \
+                "$(wc -l < "$TMP/changes.tsv" | tr -d ' ')"
+        fi
         printf '| 工具 | 旧值 | 新值 |\n| --- | --- | --- |\n'
         while IFS=$'\t' read -r key name old new reason; do
             [ -n "$key" ] || continue
@@ -664,7 +854,13 @@ fi
         notes="${notes}- Claude Code：上游 ${CLAUDE_UP} 已是 native-only（无 \`cli.js\`，在龙芯上只能 box64 运行）；selected 保持最后一个 JS 版 ${CLAUDE_JS}，不自动升级。"$'\n'
     fi
     if [ "$ZCODE_STATUS" = tag-ahead-of-release ]; then
-        notes="${notes}- ZCode：最新 tag 是 ${ZCODE_TAGS}，GitHub release 仍是 ${ZCODE_RELEASE}；按 tag 取 ${ZCODE_TAGS}。"$'\n'
+        notes="${notes}- ZCode：最新 tag 是 ${ZCODE_TAGS}，GitHub release 仍是 ${ZCODE_RELEASE}；selected 取已构建的 ${ZCODE_BUILD}。"$'\n'
+    fi
+    if [ "$ZCODE_STATUS" = waiting-for-loongarch-build ]; then
+        notes="${notes}- ZCode：上游 tag 是 ${ZCODE_TAGS}，builds 仓库还没有三件资产齐全的 release；selected 保持 ${ZCODE_PIN}。"$'\n'
+    fi
+    if [ "$CCSWITCH_STATUS" = waiting-for-loongarch-release ]; then
+        notes="${notes}- cc-switch：上游 release 是 ${CCSWITCH_RELEASE}，但没有可读取的 loong64 deb release；selected 保持 ${CCSWITCH_PIN}。"$'\n'
     fi
     if [ "$CODEX_STATUS" = query-failed ] || [ "$OPENCODE_STATUS" = query-failed ] \
         || [ "$DSH_STATUS" = query-failed ] || [ "$CLAUDE_STATUS" = query-failed ] \

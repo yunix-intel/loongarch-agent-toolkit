@@ -52,6 +52,7 @@ esac
 need curl
 need sha256sum
 need dpkg
+need dpkg-deb
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/cc-switch-install.XXXXXX")
 cleanup() { rm -rf "$TMP"; }
@@ -80,6 +81,14 @@ fi
 
 actual=$(sha256sum "$DEB" | awk '{print $1}')
 [ "$actual" = "$CC_SWITCH_DEB_SHA256" ] || die "cc-switch deb SHA256 mismatch: $actual"
+
+# SHA-256 proves the bytes are the pinned asset; this proves the asset really
+# is the version the manifest names (a version bump with a stale URL is a bug).
+pkg_version=$(dpkg-deb -f "$DEB" Version)
+case "$pkg_version" in
+    "${CC_SWITCH_VERSION#v}"*) ;;
+    *) die "cc-switch deb is version $pkg_version, expected ${CC_SWITCH_VERSION#v}*" ;;
+esac
 
 log "installing cc-switch $CC_SWITCH_VERSION"
 if command -v apt-get >/dev/null 2>&1; then
