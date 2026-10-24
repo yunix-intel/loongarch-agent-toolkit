@@ -27,6 +27,15 @@ fn log(msg: &str) {
     }
 }
 
+fn is_loopback_url(url: &Url) -> bool {
+    match url.host() {
+        Some(url::Host::Domain(d)) => d.eq_ignore_ascii_case("localhost"),
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        None => false,
+    }
+}
+
 fn parse_local_url(line: &str) -> Option<Url> {
     let start = line.find("http://")?;
     let raw = line[start..].split_whitespace().next()?;
@@ -208,6 +217,9 @@ fn main() {
             let attach = std::env::var("ZCODE_WEB_URL").ok();
             let started = match attach {
                 Some(raw) => match Url::parse(&raw) {
+                    Ok(url) if !is_loopback_url(&url) => {
+                        Err(format!("ZCODE_WEB_URL must be loopback: {url}"))
+                    }
                     Ok(url) if wait_tcp(&url, Duration::from_secs(10)) => {
                         log(&format!("[zcode-tauri] attaching to existing {url}"));
                         Ok((None, url))

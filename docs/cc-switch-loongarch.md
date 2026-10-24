@@ -9,6 +9,12 @@ Status: upstream **v4.0.19** built natively on LoongArch. The complete UI was
 verified under Xvfb, including the Claude Code, Claude Desktop, Codex, Gemini,
 OpenCode, MCP, Skills and Prompts pages.
 
+**Do not build from the fork's `main`.** It is based on upstream `79e754ab`
+(v4.0.15 era) plus only the 10 LoongArch CI files. Releases are built from the
+upstream tag (e.g. `v4.0.19`) checked out unmodified; the fork's
+[`LOONGARCH.md`](https://github.com/yunix-intel/cc-switch-loongarch/blob/main/LOONGARCH.md)
+describes the split.
+
 ## Earlier claim
 
 An earlier version of this toolkit said cc-switch could not be ported because
