@@ -49,6 +49,11 @@ jobs:
       - name: Inspect binary
         run: file ccswitch-lite
 
+      - name: Run acceptance tests
+        run: |
+          go build -trimpath -o ccswitch-lite-host .
+          BIN="$PWD/ccswitch-lite-host" bash tests/test.sh
+
   shellcheck:
     name: Shellcheck install scripts
     runs-on: ubuntu-latest

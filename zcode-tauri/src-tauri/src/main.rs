@@ -1,6 +1,7 @@
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{SocketAddr, TcpStream};
+use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::process::CommandExt;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
@@ -22,7 +23,14 @@ struct ChildHandle {
 fn log(msg: &str) {
     eprintln!("{msg}");
     let path = std::env::var("ZCODE_TAURI_LOG").unwrap_or_else(|_| "/tmp/zcode-tauri.log".into());
-    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(path) {
+    // O_NOFOLLOW prevents a pre-created symlink in /tmp from redirecting our
+    // append into another file; create logs 0600.
+    let mut opts = OpenOptions::new();
+    opts.create(true)
+        .append(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW);
+    if let Ok(mut f) = opts.open(path) {
         let _ = writeln!(f, "{msg}");
     }
 }

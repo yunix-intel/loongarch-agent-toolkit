@@ -54,7 +54,7 @@ echo "== add =="
   --format anthropic --default-model claude-sonnet-4-6 \
   --sonnet claude-sonnet-4-6 --opus claude-opus-4-1 \
   --haiku claude-haiku-4-5 --fable claude-fable-5 \
-  --header "X-Test=abc"
+  --header "X-Test=abc" --header "Authorization=Bearer SUPERSECRET"
 
 echo "== list (key must be masked) =="
 LIST=$("$BIN" list)
@@ -173,6 +173,7 @@ echo "index HTTP $code"
 grep -q 'ccswitch-lite' "$BASE/index.html" || { echo "FAIL: index html content"; exit 1; }
 STATE=$(curl -s http://127.0.0.1:18081/api/state)
 echo "$STATE" | python3 -c 'import json,sys; s=json.load(sys.stdin); assert s["current"]=="fake"; p=s["providers"][0]; assert p["hasKey"] and "test-key" not in json.dumps(s); print("state maskedKey:", p["maskedKey"])'
+echo "$STATE" | python3 -c 'import json,sys; s=json.load(sys.stdin); h=s["providers"][0].get("extraHeaders",{}); assert "SUPERSECRET" not in json.dumps(s), s; assert h.get("X-Test")=="abc"; assert h.get("Authorization")!="Bearer SUPERSECRET"; print("PASS sensitive header masked:", h.get("Authorization"))'
 curl -s -X POST -H 'Content-Type: application/json' -d '{"name":"fake"}' http://127.0.0.1:18081/api/use | tee "$BASE/web-use.json"
 python3 -c 'import json,os; j=json.load(open(os.path.join(os.environ["BASE"], "web-use.json"))); assert j["ok"], j'
 
@@ -182,6 +183,11 @@ code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
   -d '{"name":"fake"}' http://127.0.0.1:18081/api/use)
 [ "$code" = "403" ] || { echo "FAIL: cross-origin POST not rejected ($code)"; exit 1; }
 echo "PASS cross-origin POST rejected"
+code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+  -H 'Origin: http://127.0.0.1:9999' -H 'Content-Type: application/json' \
+  -d '{"name":"fake"}' http://127.0.0.1:18081/api/use)
+[ "$code" = "403" ] || { echo "FAIL: other-loopback-port POST not rejected ($code)"; exit 1; }
+echo "PASS other-loopback-port POST rejected"
 code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
   -H 'Content-Type: text/plain' -d '{"name":"fake"}' http://127.0.0.1:18081/api/use)
 [ "$code" = "415" ] || { echo "FAIL: text/plain POST not rejected ($code)"; exit 1; }
@@ -195,6 +201,24 @@ code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
   -d '{"name":"fake"}' http://127.0.0.1:18081/api/use)
 [ "$code" = "200" ] || { echo "FAIL: same-origin POST rejected ($code)"; exit 1; }
 echo "PASS same-origin POST allowed"
+
+code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
+  'http://127.0.0.1:18081/api/providers?name=fake')
+[ "$code" = "415" ] || { echo "FAIL: DELETE without JSON not rejected ($code)"; exit 1; }
+echo "PASS DELETE without JSON rejected"
+curl -s -X POST -H 'Content-Type: application/json' \
+  -d '{"name":"delme","baseUrl":"http://127.0.0.1:18080/v1","apiKey":"k"}' \
+  http://127.0.0.1:18081/api/providers >/dev/null
+code=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
+  -H 'Content-Type: application/json' \
+  'http://127.0.0.1:18081/api/providers?name=delme')
+[ "$code" = "200" ] || { echo "FAIL: DELETE with JSON failed ($code)"; exit 1; }
+curl -s http://127.0.0.1:18081/api/state | python3 -c '
+import json,sys
+s=json.load(sys.stdin)
+assert all(p["name"]!="delme" for p in s["providers"]), s
+print("PASS DELETE removes provider")
+'
 
 cleanup
 trap - EXIT

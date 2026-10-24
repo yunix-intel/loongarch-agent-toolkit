@@ -1455,6 +1455,15 @@ func cmdWeb(p *Paths, args []string) error {
 			if in.ExtraHeaders == nil && existing != nil {
 				in.ExtraHeaders = existing.ExtraHeaders
 			}
+			// The state endpoint masks sensitive header values; keep the stored
+			// value when the form submits the mask (or an empty field) back.
+			if existing != nil {
+				for k, v := range in.ExtraHeaders {
+					if old, ok := existing.ExtraHeaders[k]; ok && (v == "" || v == maskKey(old)) {
+						in.ExtraHeaders[k] = old
+					}
+				}
+			}
 			if err := normalizeProvider(&in); err != nil {
 				writeErr(w, 400, err)
 				return
@@ -1648,7 +1657,9 @@ func webGuard(next http.Handler) http.Handler {
 		}
 		if origin := r.Header.Get("Origin"); origin != "" {
 			u, err := url.Parse(origin)
-			if err != nil || u.Scheme == "" || !hostIsLoopback(u.Host) {
+			// Same-origin is required, not merely loopback: another local
+			// service on a different port must not be able to write here.
+			if err != nil || u.Scheme == "" || !strings.EqualFold(u.Host, r.Host) {
 				writeErr(w, http.StatusForbidden, errors.New("拒绝跨站请求"))
 				return
 			}
@@ -1663,9 +1674,36 @@ func webGuard(next http.Handler) http.Handler {
 			}
 		}
 		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
 		w.Header().Set("Cache-Control", "no-store")
 		next.ServeHTTP(w, r)
 	})
+}
+
+func sensitiveHeader(name string) bool {
+	n := strings.ToLower(name)
+	for _, part := range []string{"authorization", "token", "secret", "api-key", "api_key", "apikey", "cookie"} {
+		if strings.Contains(n, part) {
+			return true
+		}
+	}
+	return false
+}
+
+func publicHeaders(h map[string]string) map[string]string {
+	if len(h) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(h))
+	for k, v := range h {
+		if sensitiveHeader(k) {
+			out[k] = maskKey(v)
+		} else {
+			out[k] = v
+		}
+	}
+	return out
 }
 
 func publicProviders(list []Provider) []map[string]any {
@@ -1683,7 +1721,7 @@ func publicProviders(list []Provider) []map[string]any {
 			item["defaultModel"] = pr.DefaultModel
 		}
 		if len(pr.ExtraHeaders) > 0 {
-			item["extraHeaders"] = pr.ExtraHeaders
+			item["extraHeaders"] = publicHeaders(pr.ExtraHeaders)
 		}
 		out = append(out, item)
 	}

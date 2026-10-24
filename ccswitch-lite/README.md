@@ -194,7 +194,7 @@ Claude Desktop 使用的 Anthropic SDK 会在 `inferenceGatewayBaseUrl` 后追�
 
 ## 验收结果（2026-10-18）
 
-完整验收：`bash tests/test.sh`（78 条 PASS，退出码 0）。测试在一次性
+完整验收：`bash tests/test.sh`（86 条 PASS，退出码 0）。测试在一次性
 `HOME=/tmp/ccswitch-test/home` 中运行，未触碰真实 `~/.claude`、`~/.codex`。
 
 覆盖内容：

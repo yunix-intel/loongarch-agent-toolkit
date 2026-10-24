@@ -7,7 +7,7 @@ This repository collects four pieces of work:
 
 | Component | What it is | Status |
 | --- | --- | --- |
-| [`ccswitch-lite/`](ccswitch-lite/) | Single-binary Go CLI + Web UI for switching Claude Desktop / Claude Code / Codex between private gateways | Working; 78 acceptance assertions pass |
+| [`ccswitch-lite/`](ccswitch-lite/) | Single-binary Go CLI + Web UI for switching Claude Desktop / Claude Code / Codex between private gateways | Working; 86 acceptance assertions pass |
 | [`zcode-tauri/`](zcode-tauri/) | Lightweight Tauri 2 shell around the ZCode Web UI | Working; release binary and `.deb` built |
 | [`install/`](install/) | Installers for ABI2.0 Node, `codex`, `opencode`, `dsh`, Claude Code, ZCode and cc-switch | Working; native CLIs, ZCode TUI, Claude Code 2.1.112 and cc-switch deb installers |
 | [`claude-desktop-repack/`](claude-desktop-repack/) | Historical repack scripts (ASAR reader, AMO test, old packaging metadata) | Historical; the maintained build and tested shim live in [`claude-desktop-loongarch`](https://github.com/yunix-intel/claude-desktop-loongarch) |

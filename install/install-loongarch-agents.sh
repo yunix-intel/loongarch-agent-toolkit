@@ -308,7 +308,7 @@ install_codex_source() {
         die "Codex source archive contains unsafe paths"
     fi
     if tar -tvzf "$archive" | grep -E '^[lh]' \
-        | grep -Eq ' (->|link to) (/|\.\.(/|$))'; then
+        | grep -Eq ' (->|link to) (.*/)?\.\.(/|$)'; then
         die "Codex source archive contains an unsafe link target"
     fi
 

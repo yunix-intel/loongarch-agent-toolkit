@@ -315,7 +315,10 @@ const indexHTML = `<!doctype html>
       if (p) { fillForm(p); window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" }); }
     } else if (act === "del") {
       if (!confirm("删除供应商 " + name + "？（不会自动恢复已应用的配置）")) { return; }
-      api("/api/providers?name=" + encodeURIComponent(name), { method: "DELETE" }).then(function (r) {
+      api("/api/providers?name=" + encodeURIComponent(name), {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" }
+      }).then(function (r) {
         toast(r.message || "已删除");
         if (editing === name) { fillForm(null); }
         return load();

@@ -157,7 +157,7 @@ install_cli() {
         esac
     done < "$TMP/list.txt"
     if tar -tvzf "$archive" | grep -E '^[lh]' \
-        | grep -Eq ' (->|link to) (/|\.\.(/|$))'; then
+        | grep -Eq ' (->|link to) (.*/)?\.\.(/|$)'; then
         die "archive contains an unsafe link target"
     fi
 
