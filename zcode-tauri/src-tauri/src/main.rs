@@ -64,9 +64,9 @@ fn kill_group(pgid: i32, child: &mut Child) {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         match child.try_wait() {
-            Ok(Some(_)) => return,
+            Ok(Some(_)) => break,
             Ok(None) => {}
-            Err(_) => return,
+            Err(_) => break,
         }
         if Instant::now() >= deadline {
             break;
@@ -74,8 +74,12 @@ fn kill_group(pgid: i32, child: &mut Child) {
         thread::sleep(Duration::from_millis(100));
     }
     if pgid > 1 {
-        unsafe {
-            libc::kill(-pgid, libc::SIGKILL);
+        // The direct child can exit before its helpers. Signal the group only
+        // if members remain, so a reused PGID is never hit.
+        if unsafe { libc::kill(-pgid, 0) } == 0 {
+            unsafe {
+                libc::kill(-pgid, libc::SIGKILL);
+            }
         }
     }
     let _ = child.wait();
