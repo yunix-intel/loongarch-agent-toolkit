@@ -157,7 +157,7 @@ install_cli() {
         esac
     done < "$TMP/list.txt"
     if tar -tvzf "$archive" | grep -E '^[lh]' \
-        | grep -Eq ' (->|link to) (.*/)?\.\.(/|$)'; then
+        | grep -Eq ' (->|link to) (/|(.*/)?\.\.(/|$))'; then
         die "archive contains an unsafe link target"
     fi
 
@@ -182,6 +182,9 @@ install_cli() {
     fi
     mkdir -p "$ZCODE_PREFIX"
     cp -a "$cli_root" "$dest"
+    if [ -L "$dest/bin/zcode.mjs" ]; then
+        die "installed CLI entry is a symlink"
+    fi
     chmod 0755 "$dest/bin/zcode.mjs"
 
     node_bin=$(choose_node)

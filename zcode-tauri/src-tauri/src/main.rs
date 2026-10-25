@@ -261,6 +261,25 @@ fn main() {
                     }
                 }
             }
+
+            // SIGTERM/SIGINT bypass Tauri's ExitRequested event, so a plain
+            // kill would leave the backend process group running.  Handle the
+            // signals on a normal thread and run the same cleanup.
+            #[cfg(unix)]
+            {
+                use signal_hook::consts::{SIGINT, SIGTERM};
+                use signal_hook::iterator::Signals;
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    if let Ok(mut signals) = Signals::new([SIGINT, SIGTERM]) {
+                        for _ in signals.forever() {
+                            log("[zcode-tauri] signal received; stopping backend");
+                            stop_backend(&handle);
+                            std::process::exit(0);
+                        }
+                    }
+                });
+            }
             Ok(())
         })
         .on_window_event(|window, event| {

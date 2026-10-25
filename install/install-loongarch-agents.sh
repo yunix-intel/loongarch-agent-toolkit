@@ -308,7 +308,7 @@ install_codex_source() {
         die "Codex source archive contains unsafe paths"
     fi
     if tar -tvzf "$archive" | grep -E '^[lh]' \
-        | grep -Eq ' (->|link to) (.*/)?\.\.(/|$)'; then
+        | grep -Eq ' (->|link to) (/|(.*/)?\.\.(/|$))'; then
         die "Codex source archive contains an unsafe link target"
     fi
 
@@ -327,6 +327,9 @@ install_codex_source() {
         bin=$(find "$src" -type f -name codex | head -n 1)
     fi
     [ -n "$bin" ] || die "codex binary not found in the source archive"
+    if [ -L "$bin" ]; then
+        die "codex source binary is a symlink: $bin"
+    fi
     [ -x "$bin" ] || chmod 0755 "$bin"
 
     rel=${bin#"$src"/}

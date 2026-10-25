@@ -165,8 +165,9 @@ overrides the install prefix. The system Node is untouched.
 
 ```sh
 sudo CODEX_CHANNEL=source \
-  CODEX_SOURCE_URL=/path/to/codex-rust-v0.163.0-loongarch64.tar.gz \
-  CODEX_SOURCE_SHA256=acfeda1d8c6e98fee9d9935d97f94ed1ff9901236bb2cde7d7ffa517397a896d \
+  CODEX_SOURCE_VERSION=0.164.0 \
+  CODEX_SOURCE_URL=/path/to/codex-rust-v0.164.0-loongarch64.tar.gz \
+  CODEX_SOURCE_SHA256=55b9bbcc9f51ba528e9d7fcbc9e9f085ea7a67c13f95c858c75cee0640a75e09 \
   ./install/install-loongarch-agents.sh
 ```
 
