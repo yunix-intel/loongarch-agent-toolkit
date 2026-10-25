@@ -160,6 +160,12 @@ install_cli() {
         | grep -Eq ' (->|link to) (/|(.*/)?\.\.(/|$))'; then
         die "archive contains an unsafe link target"
     fi
+    # Reject a symlink/hardlink entry for the executable before extracting,
+    # so the entry is never materialised in the staging tree at all.
+    if tar -tvzf "$archive" | grep -E '^[lh]' \
+        | grep -Eq '(^|/)bin/zcode\.mjs( |$)'; then
+        die "archive contains a symlink entry for bin/zcode.mjs"
+    fi
 
     mkdir -p "$TMP/extract"
     tar -xzf "$archive" -C "$TMP/extract"

@@ -311,6 +311,12 @@ install_codex_source() {
         | grep -Eq ' (->|link to) (/|(.*/)?\.\.(/|$))'; then
         die "Codex source archive contains an unsafe link target"
     fi
+    # Reject a symlink/hardlink entry for the codex executable before
+    # extracting; a later chmod would otherwise follow it.
+    if tar -tvzf "$archive" | grep -E '^[lh]' \
+        | grep -Eq '(^|/)codex( |$)'; then
+        die "Codex source archive contains a symlink entry for codex"
+    fi
 
     src="$TMP/codex-src"
     mkdir -p "$src"
