@@ -147,7 +147,7 @@ overrides the install prefix. The system Node is untouched.
 | DSH | `0.2.1-rc.2` | Loongnix registry 最新版 |
 | Claude Code | `2.1.112` | 最后一个 npm tarball 仍带 `cli.js` 的版本 |
 | ZCode | `v3.15.1` | builds 仓库中资产齐全的最新 release（tag 仅作 upstream） |
-| cc-switch | `v4.0.19` | 私有 builds 仓库中最新的 loong64 deb release |
+| cc-switch | `v4.0.20` | 私有 builds 仓库中最新的 loong64 deb release |
 <!-- agent-versions:end -->
 
 `selected` 的含义是“当前龙芯上可用的最新版”，不一定是上游 latest。版本
