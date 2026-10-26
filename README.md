@@ -164,16 +164,18 @@ overrides the install prefix. The system Node is untouched.
 默认 `codex`。
 
 ```sh
-sudo CODEX_CHANNEL=source \
-  CODEX_SOURCE_VERSION=0.164.0 \
-  CODEX_SOURCE_URL=/path/to/codex-rust-v0.164.0-loongarch64.tar.gz \
-  CODEX_SOURCE_SHA256=55b9bbcc9f51ba528e9d7fcbc9e9f085ea7a67c13f95c858c75cee0640a75e09 \
-  ./install/install-loongarch-agents.sh
+# 默认读取 install/versions.env 的 source 版本/URL/SHA256
+# （0.164.0，asset 668589231，SHA256 55b9bbcc…a75e09）。
+read -r -s -p 'GitHub token: ' CODEX_SOURCE_TOKEN; echo
+export CODEX_SOURCE_TOKEN
+sudo -E CODEX_CHANNEL=source ./install/install-loongarch-agents.sh
+unset CODEX_SOURCE_TOKEN
 ```
 
-`CODEX_SOURCE_URL` 支持 `http(s)://` 或本地 `.tar.gz`。私有 GitHub release
-资产需 `CODEX_SOURCE_TOKEN`（或 `GITHUB_TOKEN`）；安装器在解包前校验
-SHA-256，并拒绝包含绝对路径或 `..` 的条目。
+`CODEX_SOURCE_URL` 支持 `http(s)://` 或本地 `.tar.gz`；使用本地归档时再显式
+覆盖为 `CODEX_SOURCE_URL=/path/to/codex-rust-v0.164.0-loongarch64.tar.gz`。
+私有 GitHub release 资产需 `CODEX_SOURCE_TOKEN`（或 `GITHUB_TOKEN`）；安装器
+在解包前校验 SHA-256，并拒绝包含绝对路径、`..` 或可执行入口 symlink 的条目。
 
 ### ZCode CLI / desktop
 
