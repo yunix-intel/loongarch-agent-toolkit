@@ -1,6 +1,13 @@
 name: Attest mirror assets
 
 on:
+  release:
+    types: [published, edited]
+  workflow_run:
+    workflows: ["Generate dependency SBOMs"]
+    types: [completed]
+  schedule:
+    - cron: '17 4 * * *'
   workflow_dispatch:
 
 permissions:
@@ -8,8 +15,15 @@ permissions:
   id-token: write
   attestations: write
 
+concurrency:
+  group: mirror-attest
+  cancel-in-progress: true
+
 jobs:
   attest:
+    if: |
+      (github.event_name != 'release' || github.event.release.tag_name == 'agent-binaries') &&
+      (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
