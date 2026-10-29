@@ -307,9 +307,9 @@ environment and is never committed. See
 ## Claude Desktop repack
 
 The historical Claude Desktop repack scripts (ASAR reader, AMO sanity check and
-old Debian/AppImage metadata) moved to the separate private
-`yunix-intel/claude-desktop-loongarch` repository, where the maintained shim and
-build also live. This toolkit no longer carries Claude Desktop packaging code.
+old Debian/AppImage metadata) moved to a separate private Claude Desktop
+repository, where the maintained shim and build also live. This toolkit no
+longer carries Claude Desktop packaging code.
 The old minimal shim that used to live here was removed: it did not reject
 `..`/separators or symlinks and could escape the safe-fs root. Not affiliated
 with Anthropic.
