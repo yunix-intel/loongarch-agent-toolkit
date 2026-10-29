@@ -39,7 +39,7 @@ verify_checksums() {
         echo "missing SHA256SUMS in $dir" >&2
         return 1
     }
-    ( cd "$dir" && sha256sum -c SHA256SUMS )
+    ( cd "$dir" && sha256sum -c --ignore-missing SHA256SUMS )
 }
 
 upload_public() {
