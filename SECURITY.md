@@ -41,9 +41,10 @@ automation/tests (minimum 16 characters).
 Public release assets ship with `SHA256SUMS`, `SBOM.spdx.json` (component
 summary), per-artifact SPDX dependency graphs (`SBOM-codex.spdx.json`,
 `SBOM-zcode.spdx.json`, `SBOM-cc-switch.spdx.json`), and license/NOTICE files.
-Release provenance is recorded in the release notes. Run the manual
-`sbom-generate.yml` workflow after changing the upstream tags, then
-`mirror-attest.yml` to attest the updated assets. Verify with
+Release provenance is recorded in the release notes. `mirror-attest.yml` runs
+automatically on `agent-binaries` release changes, after the SBOM workflow, and
+on a daily fallback; it can also be dispatched manually. Generate SBOMs with
+`sbom-generate.yml` after changing the upstream tags. Verify with
 `gh attestation verify <asset> --repo yunix-intel/loongarch-agent-toolkit`.
-Artifact attestations are not yet automatic; verify `SHA256SUMS` before
+Attestations cover the downloaded public assets; verify `SHA256SUMS` before
 installing.
