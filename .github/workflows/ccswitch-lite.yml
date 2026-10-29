@@ -19,6 +19,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ccswitch-lite-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   go:
     name: Go build (linux/loong64)
