@@ -186,6 +186,13 @@ else
 fi
 
 mkdir -p "$TMP/node"
+if tar -tJf "$TMP/$NODE_TARBALL" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
+    die "Node archive contains an absolute or parent-traversal path"
+fi
+if tar -tvJf "$TMP/$NODE_TARBALL" | grep -E '^[lh]' \
+    | grep -Eq ' (->|link to) /'; then
+    die "Node archive contains an absolute symlink target"
+fi
 tar -xJf "$TMP/$NODE_TARBALL" -C "$TMP/node" --strip-components=1
 
 if [ -e "$NODE_PREFIX" ]; then
