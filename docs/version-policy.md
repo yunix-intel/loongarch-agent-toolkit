@@ -147,3 +147,17 @@ PAT 读取 draft release、推送分支和创建/更新 PR，PR 作者是 PAT �
 CI 会自动启动，不再需要每次批准。token 只通过环境变量传给 git/gh，不会写进
 仓库；不要把它提交到任何文件。
 
+## 私有构建源、公共镜像与依赖刷新
+
+- `loongarch-agent-builds` 和 `cc-switch-loongarch` 现在是 **private** 构建源，
+  自托管 runner 只挂在这两个私有仓；公开 fork 无法命中它们。
+- 审核后的二进制镜像到本仓库公开的 `agent-binaries` release；`versions.env`
+  只写公共 URL。`check-agent-versions.sh` 在镜像缺失时保留旧 pin 并报告
+  `mirror-missing`，不会写 404 URL。
+- `dependency-refresh.yml`（手动）更新 `zcode-tauri/Cargo.lock` 并开 PR；
+  因为仓库策略禁止 `GITHUB_TOKEN` 创建/批准 PR，它使用 `AUTO_ALIGN_TOKEN`。
+  私有构建源各自有相同的刷新流程；只有镜像进 `agent-binaries` 后才影响公开
+  安装器。
+- 依赖更新 PR 必须先过前端单测和 renderer build（cc-switch）或 Cargo 刷新
+  检查，再人工合并；不要直接把 Dependabot 的大版本 PR 合入发布路径。
+
