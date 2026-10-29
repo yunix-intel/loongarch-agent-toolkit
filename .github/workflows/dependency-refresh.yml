@@ -1,0 +1,45 @@
+name: Dependency refresh
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Update the Tauri Cargo lockfile
+        run: |
+          set -euo pipefail
+          cargo update --manifest-path zcode-tauri/src-tauri/Cargo.toml
+          git diff --stat
+
+      - name: Open dependency refresh PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No dependency changes" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          BRANCH="chore/dependency-refresh-${GITHUB_RUN_ID}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add -A
+          git commit -m "chore(deps): refresh the Tauri Cargo lockfile"
+          gh auth setup-git
+          git push origin "$BRANCH"
+          gh pr create --base main --head "$BRANCH" \
+            --title "chore(deps): refresh the Tauri Cargo lockfile" \
+            --body "Automated Cargo lockfile refresh."
