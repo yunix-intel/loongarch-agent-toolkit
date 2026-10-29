@@ -1,0 +1,52 @@
+name: Generate dependency SBOMs
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Fetch upstream source trees at the released tags
+        run: |
+          set -euo pipefail
+          git clone -q --depth 1 --branch rust-v0.164.0 https://github.com/openai/codex.git codex
+          git clone -q --depth 1 --branch v3.15.1 https://github.com/zai-org/ZCode.git zcode
+          git clone -q --depth 1 --branch v4.0.21 https://github.com/farion1231/cc-switch.git cc-switch
+
+      - name: Install syft
+        run: |
+          set -euo pipefail
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/v1.55.0/install.sh \
+            | sh -s -- -b /usr/local/bin
+          syft version
+
+      - name: Generate per-artifact SPDX dependency graphs
+        run: |
+          set -euo pipefail
+          syft dir:codex -o spdx-json=SBOM-codex.spdx.json
+          syft dir:zcode -o spdx-json=SBOM-zcode.spdx.json
+          syft dir:cc-switch -o spdx-json=SBOM-cc-switch.spdx.json
+          python3 - <<'PY'
+          import json, os
+          for p in ("SBOM-codex.spdx.json", "SBOM-zcode.spdx.json", "SBOM-cc-switch.spdx.json"):
+              d = json.load(open(p, encoding="utf-8"))
+              print(p, "packages=", len(d.get("packages", [])), "relationships=", len(d.get("relationships", [])))
+          PY
+
+      - name: Upload SBOMs to the public mirror release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload agent-binaries \
+            SBOM-codex.spdx.json SBOM-zcode.spdx.json SBOM-cc-switch.spdx.json \
+            --repo yunix-intel/loongarch-agent-toolkit --clobber
