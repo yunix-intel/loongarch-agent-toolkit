@@ -1,0 +1,28 @@
+name: PR guard
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: PR guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Check for whitespace errors
+        run: git diff --check "origin/${{ github.base_ref }}...HEAD"
+
+      - name: Check for unmerged conflict markers
+        run: |
+          if git grep -nE '^(<<<<<<<|=======|>>>>>>>)' -- . ':!*.png'; then
+            echo "conflict markers found" >&2
+            exit 1
+          fi
