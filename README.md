@@ -16,6 +16,8 @@ missing mirror asset.
 
 This repository collects three pieces of work:
 
+Security policy: [`SECURITY.md`](SECURITY.md).
+
 | Component | What it is | Status |
 | --- | --- | --- |
 | [`ccswitch-lite/`](ccswitch-lite/) | Single-binary Go CLI + Web UI for switching Claude Desktop / Claude Code / Codex between private gateways | Working; 86 acceptance assertions pass |
