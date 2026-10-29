@@ -102,6 +102,7 @@ NODE_PREFIX=${NODE_PREFIX:-/opt/node22-abi2}
 NPM_REGISTRY=${NPM_REGISTRY:-https://registry.loongnix.cn:5873}
 CODEX_CHANNEL=${CODEX_CHANNEL:-$(manifest_get CODEX_CHANNEL "$CODEX_CHANNEL_DEFAULT")}
 CODEX_VERSION=${CODEX_VERSION:-$(manifest_get CODEX_VERSION "$CODEX_VERSION_DEFAULT")}
+CODEX_NPM_INTEGRITY=${CODEX_NPM_INTEGRITY:-$(manifest_get CODEX_NPM_INTEGRITY '')}
 CODEX_SOURCE_VERSION=${CODEX_SOURCE_VERSION:-$(manifest_get CODEX_SOURCE_VERSION "$CODEX_SOURCE_VERSION_DEFAULT")}
 CODEX_SOURCE_URL=${CODEX_SOURCE_URL:-$(manifest_get CODEX_SOURCE_URL "$CODEX_SOURCE_URL_DEFAULT")}
 CODEX_SOURCE_SHA256=${CODEX_SOURCE_SHA256:-$(manifest_get CODEX_SOURCE_SHA256 "$CODEX_SOURCE_SHA256_DEFAULT")}
@@ -109,7 +110,9 @@ CODEX_SOURCE_TOKEN=${CODEX_SOURCE_TOKEN:-}
 CODEX_SOURCE_PREFIX=${CODEX_SOURCE_PREFIX:-/opt}
 CODEX_LINK_DEFAULT=${CODEX_LINK_DEFAULT:-$(manifest_get CODEX_LINK_DEFAULT "$CODEX_LINK_DEFAULT_DEFAULT")}
 OPENCODE_VERSION=${OPENCODE_VERSION:-$(manifest_get OPENCODE_VERSION "$OPENCODE_VERSION_DEFAULT")}
+OPENCODE_NPM_INTEGRITY=${OPENCODE_NPM_INTEGRITY:-$(manifest_get OPENCODE_NPM_INTEGRITY '')}
 DSH_VERSION=${DSH_VERSION:-$(manifest_get DSH_VERSION "$DSH_VERSION_DEFAULT")}
+DSH_NPM_INTEGRITY=${DSH_NPM_INTEGRITY:-$(manifest_get DSH_NPM_INTEGRITY '')}
 BIN_DIR=${BIN_DIR:-/usr/local/bin}
 NODE_URL=${NODE_URL:-https://github.com/loong64/node/releases/download/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-loong64.tar.xz}
 
@@ -221,17 +224,50 @@ export PATH
 install_pkg() {
     pkg=$1
     version=$2
+    integrity=${3:-}
+    case "$integrity" in
+        ''|sha512-*) ;;
+        *) die "invalid npm integrity for $pkg: $integrity" ;;
+    esac
+    if [ -n "$integrity" ]; then
+        need openssl
+    fi
     attempt=1
     log "installing $pkg@$version from $NPM_REGISTRY"
     while :; do
-        if "$NPM" install -g \
+        src="$pkg@$version"
+        packdir=''
+        pack_failed=0
+        if [ -n "$integrity" ]; then
+            packdir="$TMP/npm-pack.$$.$attempt"
+            rm -rf "$packdir"
+            mkdir -p "$packdir"
+            if "$NPM" pack "$pkg@$version" \
+                --registry "$NPM_REGISTRY" \
+                --pack-destination "$packdir" >/dev/null; then
+                tgz=$(find "$packdir" -maxdepth 1 -type f -name '*.tgz' | head -n 1)
+                if [ -z "$tgz" ]; then
+                    pack_failed=1
+                else
+                    actual="sha512-$(openssl dgst -sha512 -binary "$tgz" | openssl base64 -A)"
+                    [ "$actual" = "$integrity" ] \
+                        || die "npm integrity mismatch for $pkg@$version: expected $integrity, got $actual"
+                    src=$tgz
+                fi
+            else
+                pack_failed=1
+            fi
+        fi
+        if [ "$pack_failed" -eq 0 ] && "$NPM" install -g \
             --prefix "$NODE_PREFIX" \
             --registry "$NPM_REGISTRY" \
             --fetch-retries 3 \
             --no-audit --no-fund \
-            "$pkg@$version"; then
+            "$src"; then
+            [ -z "$packdir" ] || rm -rf "$packdir"
             return 0
         fi
+        [ -z "$packdir" ] || rm -rf "$packdir"
         if [ "$attempt" -ge 2 ]; then
             die "npm install $pkg@$version failed twice"
         fi
@@ -379,16 +415,16 @@ EOF
 }
 
 if [ "$CODEX_CHANNEL" = "npm" ]; then
-    install_pkg "@openai/codex" "$CODEX_VERSION"
+    install_pkg "@openai/codex" "$CODEX_VERSION" "$CODEX_NPM_INTEGRITY"
 fi
-install_pkg "opencode-ai" "$OPENCODE_VERSION"
+install_pkg "opencode-ai" "$OPENCODE_VERSION" "$OPENCODE_NPM_INTEGRITY"
 # dsh currently has no linux-loong64 node-pty prebuild, so npm may build it
 # with node-gyp.  Warn early instead of failing halfway through the install.
 for tool in gcc g++ make python3; do
     command -v "$tool" >/dev/null 2>&1 \
         || warn "$tool not found; dsh node-pty may fail to build from source"
 done
-install_pkg "@deepseek-ai/dsh" "$DSH_VERSION"
+install_pkg "@deepseek-ai/dsh" "$DSH_VERSION" "$DSH_NPM_INTEGRITY"
 
 CODEX_JS="$NODE_PREFIX/lib/node_modules/@openai/codex/bin/codex.js"
 DSH_JS="$NODE_PREFIX/lib/node_modules/@deepseek-ai/dsh/lib/bin.js"

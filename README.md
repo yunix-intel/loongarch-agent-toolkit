@@ -87,12 +87,19 @@ CGO_ENABLED=0 GOOS=linux GOARCH=loong64 \
 ./ccswitch-lite use gw
 ./ccswitch-lite list
 ./ccswitch-lite restore
-./ccswitch-lite web            # http://127.0.0.1:18081/
+./ccswitch-lite web            # 启动后输出 http://127.0.0.1:18081/?token=...
 ```
 
-`baseUrl` must **not** include `/v1`: Claude Desktop appends `/v1/messages`.
+`ccswitch-lite web` 生成 32 字节 capability token，写入
+`~/.config/ccswitch-lite/web-token`（0600）。打开启动命令输出的
+`?token=...` URL；UI 会把 token 移到 sessionStorage 并从地址栏移除。
+`/api/*` 必须携带 `X-CCSwitch-Token`（或 `Authorization: Bearer`），其他本机
+用户即使能访问回环端口也读不到 0600 token 文件。自动化可用
+`CCSWITCH_WEB_TOKEN` 覆盖，长度至少 16 字符。
 API keys are stored in a 0600 `providers.json`, shown only masked, and the Web
-UI refuses non-loopback bind addresses.
+UI refuses non-loopback bind addresses. The installer verifies the sha512
+integrity of the exact Codex/OpenCode/DSH registry tarballs before installing
+them; a republished registry tarball is rejected.
 
 Acceptance test (throwaway `HOME`, never touches real configs):
 

@@ -8,6 +8,10 @@ set -euo pipefail
 BIN=${BIN:-$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)/ccswitch-lite}
 BASE=${BASE:-/tmp/ccswitch-test}
 export BASE
+export CCSWITCH_WEB_TOKEN="test-web-token-0123456789abcdef"
+# All local API calls must carry the capability header; use `command curl` in
+# the negative test that deliberately omits it.
+curl() { command curl -H "X-CCSwitch-Token: $CCSWITCH_WEB_TOKEN" "$@"; }
 rm -rf "$BASE"
 export HOME="$BASE/home"
 export XDG_CONFIG_HOME="$HOME/.config"
@@ -171,6 +175,9 @@ done
 echo "index HTTP $code"
 [ "$code" = "200" ] || { echo "FAIL: web index not 200"; exit 1; }
 grep -q 'ccswitch-lite' "$BASE/index.html" || { echo "FAIL: index html content"; exit 1; }
+code=$(command curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18081/api/state)
+[ "$code" = "401" ] || { echo "FAIL: API without token not rejected ($code)"; exit 1; }
+echo "PASS API without token rejected"
 STATE=$(curl -s http://127.0.0.1:18081/api/state)
 echo "$STATE" | python3 -c 'import json,sys; s=json.load(sys.stdin); assert s["current"]=="fake"; p=s["providers"][0]; assert p["hasKey"] and "test-key" not in json.dumps(s); print("state maskedKey:", p["maskedKey"])'
 echo "$STATE" | python3 -c 'import json,sys; s=json.load(sys.stdin); h=s["providers"][0].get("extraHeaders",{}); assert "SUPERSECRET" not in json.dumps(s), s; assert h.get("X-Test")=="abc"; assert h.get("Authorization")!="Bearer SUPERSECRET"; print("PASS sensitive header masked:", h.get("Authorization"))'

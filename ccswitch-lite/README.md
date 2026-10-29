@@ -46,7 +46,7 @@ ccswitch use gw        # 设为当前并立即应用到三个目标
 ccswitch list          # 查看列表（Key 掩码）
 ccswitch apply         # 重新应用当前供应商
 ccswitch restore       # Claude Desktop 回到 1P，并清理本工具写入项
-ccswitch web           # http://127.0.0.1:18081/
+ccswitch web           # 启动后输出 http://127.0.0.1:18081/?token=...
 ```
 
 `add` 不带完整参数且运行在终端时会进入交互式提问。`--header "K=V"` 可重复，
@@ -187,10 +187,12 @@ Claude Desktop 使用的 Anthropic SDK 会在 `inferenceGatewayBaseUrl` 后追�
 `ccswitch web [--addr 127.0.0.1:18081]`
 
 - 仅允许回环地址（`127.0.0.1`/`::1`/`localhost`），拒绝 `0.0.0.0`，防止 API Key 管理界面暴露到网络；
+- 启动时生成 32 字节 capability token，写入 `~/.config/ccswitch-lite/web-token`（0600）；打开启动命令输出的 `?token=...` URL，UI 会把 token 移入 sessionStorage 并从地址栏移除；
+- `/api/*` 必须携带 `X-CCSwitch-Token`（或 `Authorization: Bearer`）；其他本机用户读不到 0600 token 文件，因此不能调用 API。自动化可设置 `CCSWITCH_WEB_TOKEN`（至少 16 字符）；
 - 所有请求校验 `Host` 必须是回环地址；写请求必须是 `Content-Type: application/json`，且 `Origin`（如有）必须是回环地址。这样任意网页无法用跨站表单或 `text/plain` 请求改写供应商并诱导 Key 外泄，DNS rebinding 也会被 Host 检查拦下；
 - GET `/api/state` 返回供应商列表与 `maskedKey`，从不返回完整 Key；
 - 支持新增/编辑/删除、使用并应用、应用当前、恢复官方；
-- 无外部 JS/CSS/字体依赖，离线可用；无内置登录，仅适合单机使用。
+- 无外部 JS/CSS/字体依赖，离线可用。
 
 ## 验收结果（2026-10-18）
 

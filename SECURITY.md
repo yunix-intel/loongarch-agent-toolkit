@@ -31,8 +31,15 @@ Tokens used by automation live only in GitHub Actions secrets
 mirror downloads require no token. Do not paste a token into an issue, PR, log,
 or command line.
 
+`ccswitch-lite` uses a per-process capability token for its Web API. The token
+is stored in a 0600 file next to `providers.json`; another local user cannot
+call `/api/*` without it. `CCSWITCH_WEB_TOKEN` can supply a fixed token for
+automation/tests (minimum 16 characters).
+
 ## Releases
 
 Public release assets ship with `SHA256SUMS` and license/NOTICE files. Release
-provenance is recorded in the release notes. Artifact attestations are not yet
-enabled; verify the checksum before installing.
+provenance is recorded in the release notes. Run the manual `mirror-attest.yml`
+workflow after changing `agent-binaries` to generate a GitHub build-provenance
+attestation for the mirror assets. Artifact attestations are not yet automatic;
+verify `SHA256SUMS` before installing.

@@ -155,6 +155,17 @@ const indexHTML = `<!doctype html>
 <script>
 (function () {
   "use strict";
+  var token = "";
+  (function () {
+    var m = location.search.match(/[?&]token=([^&]+)/);
+    if (m) {
+      token = decodeURIComponent(m[1]);
+      try { sessionStorage.setItem("ccswitch_token", token); } catch (e) {}
+      try { history.replaceState(null, "", location.pathname); } catch (e) {}
+    } else {
+      try { token = sessionStorage.getItem("ccswitch_token") || ""; } catch (e) {}
+    }
+  }());
   var state = { current: "", providers: [] };
   var editing = "";
 
@@ -176,7 +187,10 @@ const indexHTML = `<!doctype html>
   }
 
   function api(path, opts) {
-    return fetch(path, opts || {}).then(function (r) {
+    opts = opts || {};
+    opts.headers = opts.headers || {};
+    if (token) { opts.headers["X-CCSwitch-Token"] = token; }
+    return fetch(path, opts).then(function (r) {
       return r.json().catch(function () { return { ok: false, error: "HTTP " + r.status }; })
         .then(function (j) {
           if (!r.ok || j.ok === false) { throw new Error(j.error || ("HTTP " + r.status)); }
