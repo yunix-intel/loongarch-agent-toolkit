@@ -248,6 +248,23 @@ sudo -E ./install/install-cc-switch-loongarch.sh
 Why ABI matters, and why Node 22.16 silently does nothing for `dsh`, is
 documented in [`docs/abi-and-node.md`](docs/abi-and-node.md).
 
+## Private build sources and public mirror
+
+`loongarch-agent-builds` and `cc-switch-loongarch` are private build sources
+with self-hosted loong64 runners. Their reviewed assets are copied into this
+repository's public `agent-binaries` release; installers never reference the
+private releases. The version watch only writes a new URL after the matching
+asset exists in `agent-binaries`.
+
+## Dependency refresh
+
+`dependency-refresh.yml` is a manual workflow that refreshes the
+`zcode-tauri` Cargo lockfile and opens a PR. It uses `AUTO_ALIGN_TOKEN` for PR
+creation because repository policy deliberately blocks `GITHUB_TOKEN` from
+creating or approving pull requests. The private build sources use their own
+dependency-refresh workflow; public installers are unaffected until a reviewed
+asset is mirrored.
+
 ## Agent version watch and alignment
 
 [`.github/workflows/agent-version-watch.yml`](.github/workflows/agent-version-watch.yml)
