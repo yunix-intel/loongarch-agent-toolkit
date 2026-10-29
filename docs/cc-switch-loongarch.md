@@ -2,7 +2,7 @@
 
 The official [`farion1231/cc-switch`](https://github.com/farion1231/cc-switch)
 Tauri application now builds and runs on loongarch64. The port is maintained in
-the private repository
+the public repository
 [`yunix-intel/cc-switch-loongarch`](https://github.com/yunix-intel/cc-switch-loongarch).
 
 Status: upstream **v4.0.19** built natively on LoongArch. The complete UI was

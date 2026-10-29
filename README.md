@@ -3,14 +3,13 @@
 Practical tools for running AI coding agents on **LoongArch (loongarch64)**
 Linux, built and verified on Loongnix 6.6.52 with ABI2.0 userspace.
 
-This repository collects four pieces of work:
+This repository collects three pieces of work:
 
 | Component | What it is | Status |
 | --- | --- | --- |
 | [`ccswitch-lite/`](ccswitch-lite/) | Single-binary Go CLI + Web UI for switching Claude Desktop / Claude Code / Codex between private gateways | Working; 86 acceptance assertions pass |
 | [`zcode-tauri/`](zcode-tauri/) | Lightweight Tauri 2 shell around the ZCode Web UI | Working; release binary and `.deb` built |
 | [`install/`](install/) | Installers for ABI2.0 Node, `codex`, `opencode`, `dsh`, Claude Code, ZCode and cc-switch | Working; native CLIs, ZCode TUI, Claude Code 2.1.112 and cc-switch deb installers |
-| [`claude-desktop-repack/`](claude-desktop-repack/) | Historical repack scripts (ASAR reader, AMO test, old packaging metadata) | Historical; the maintained build and tested shim live in [`claude-desktop-loongarch`](https://github.com/yunix-intel/claude-desktop-loongarch) |
 
 `zcode-tauri/` and `loongarch-agent-builds/vendor/zcode-tauri` share the same
 source files; only the packaging variants differ. Check the invariant with
@@ -19,7 +18,7 @@ source files; only the packaging variants differ. Check the invariant with
 The official [`farion1231/cc-switch`](https://github.com/farion1231/cc-switch)
 Tauri app **has been built for loongarch64**: upstream v4.0.19 compiles with
 Rust 1.97.1 and its full UI has been verified under Xvfb. The port lives in the
-private repository
+public repository
 [`yunix-intel/cc-switch-loongarch`](https://github.com/yunix-intel/cc-switch-loongarch);
 build details are in
 [`docs/cc-switch-loongarch.md`](docs/cc-switch-loongarch.md). `ccswitch-lite`
@@ -33,7 +32,6 @@ remains a lighter single-binary alternative.
 ccswitch-lite/          Go source, embedded Web UI, tests/
 zcode-tauri/            Tauri 2 source, frontend loading page, packaging
 install/                Agent installer + reference wrappers
-claude-desktop-repack/  Repack scripts and Debian metadata (no app payload)
 docs/                   ABI/Node, cc-switch port, Tauri, screenshots
 .github/workflows/      ccswitch-lite build + shellcheck CI, agent version watch
 ```
@@ -53,7 +51,7 @@ docs/                   ABI/Node, cc-switch port, Tauri, screenshots
   access to `unofficial-builds.nodejs.org`, because node-pty is built locally
   when no loong64 prebuild exists. The installer retries once.
 - For GUI smoke tests: `xvfb`; for local version-watch runs: `gh` plus a token
-  with access to the private repositories.
+  with access to the repositories.
 
 ## ccswitch-lite
 
@@ -308,16 +306,13 @@ environment and is never committed. See
 
 ## Claude Desktop repack
 
-`claude-desktop-repack/` is **historical**: it keeps the ASAR reader, the AMO
-sanity check and the old packaging metadata. The maintained build — including
-the tested `@ant/claude-native` shim (41/41 tests, fd-relative safe-fs,
-fail-closed socket) — is
-[`yunix-intel/claude-desktop-loongarch`](https://github.com/yunix-intel/claude-desktop-loongarch).
+The historical Claude Desktop repack scripts (ASAR reader, AMO sanity check and
+old Debian/AppImage metadata) moved to the separate private
+`yunix-intel/claude-desktop-loongarch` repository, where the maintained shim and
+build also live. This toolkit no longer carries Claude Desktop packaging code.
 The old minimal shim that used to live here was removed: it did not reject
-`..`/separators or symlinks and could escape the safe-fs root. Neither
-directory contains an official `app.asar`, Electron binary or Anthropic
-payload. Code/Cowork sessions still fail because the bundled Claude Code
-binary is x86-64. Not affiliated with Anthropic.
+`..`/separators or symlinks and could escape the safe-fs root. Not affiliated
+with Anthropic.
 
 ## Known limitations
 

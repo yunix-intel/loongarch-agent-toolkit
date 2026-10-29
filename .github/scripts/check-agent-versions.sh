@@ -205,7 +205,7 @@ gh_tags() {
         --paginate --jq '.[].name' 2>/dev/null || true
 }
 
-# Release assets of a private repo, drafts included, as TSV:
+# Release assets of a repository, drafts included, as TSV:
 #   tag <TAB> asset name <TAB> asset API URL <TAB> sha256 <TAB> state
 # Empty without a token; callers then keep the manifest pin instead of guessing.
 private_release_assets() {
@@ -547,7 +547,7 @@ else
     ZCODE_STATUS='up-to-date'
 fi
 
-# A token that cannot see the private repo is a configuration problem, not a
+# A token that cannot see the repository is a configuration problem, not a
 # missing build; report it instead of silently keeping the pin.
 if [ "$CCSWITCH_READ_FAILED" -eq 1 ]; then
     CCSWITCH_STATUS='private-repo-unreadable'
