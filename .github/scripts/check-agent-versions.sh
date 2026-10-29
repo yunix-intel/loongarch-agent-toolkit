@@ -36,6 +36,9 @@ ZCODE_REPO=${ZCODE_REPO:-zai-org/ZCode}
 CCSWITCH_REPO=${CCSWITCH_REPO:-farion1231/cc-switch}
 BUILDS_REPO=${BUILDS_REPO:-yunix-intel/loongarch-agent-builds}
 CCSWITCH_BUILDS_REPO=${CCSWITCH_BUILDS_REPO:-yunix-intel/cc-switch-loongarch}
+MIRROR_REPO=${MIRROR_REPO:-yunix-intel/loongarch-agent-toolkit}
+MIRROR_TAG=${MIRROR_TAG:-agent-binaries}
+MIRROR_BASE=${MIRROR_BASE:-https://github.com/$MIRROR_REPO/releases/download/$MIRROR_TAG}
 DRY_RUN=${DRY_RUN:-false}
 TODAY=${TODAY:-$(date -u +%Y-%m-%d)}
 TOKEN=${GH_TOKEN:-${GITHUB_TOKEN:-}}
@@ -168,6 +171,20 @@ gh_api() {
 
 gh_builds_api() {
     GH_TOKEN="$BUILDS_TOKEN" gh api "$@"
+}
+
+# Build repositories are private; their downloadable assets are mirrored into
+# the public toolkit release.  Never write a private API asset URL into the
+# public manifest.
+mirror_has_asset() {
+    local name=$1
+    [ -n "$name" ] || return 1
+    gh_api "repos/$MIRROR_REPO/releases/tags/$MIRROR_TAG" \
+        --jq '.assets[]?.name' 2>/dev/null | grep -Fxq "$name"
+}
+
+mirror_url() {
+    printf '%s/%s' "$MIRROR_BASE" "$1"
 }
 
 # Newest source-built Codex release in the private builds repo.
@@ -445,9 +462,16 @@ CLAUDE_UP=$(npm_latest '@anthropic-ai%2Fclaude-code')
 CODEX_LOONG=$(codex_loong_latest)
 CODEX_SOURCE_TSV=$(codex_source_release)
 CODEX_SOURCE_NEW=$(printf '%s' "$CODEX_SOURCE_TSV" | cut -f1)
-CODEX_SOURCE_NEW_URL=$(printf '%s' "$CODEX_SOURCE_TSV" | cut -f2)
+CODEX_SOURCE_NEW_URL=
 CODEX_SOURCE_NEW_SHA=$(printf '%s' "$CODEX_SOURCE_TSV" | cut -f3)
 CODEX_SOURCE_NEW_NAME=$(printf '%s' "$CODEX_SOURCE_TSV" | cut -f4)
+if [ -n "$CODEX_SOURCE_NEW_NAME" ] && mirror_has_asset "$CODEX_SOURCE_NEW_NAME"; then
+    CODEX_SOURCE_NEW_URL=$(mirror_url "$CODEX_SOURCE_NEW_NAME")
+elif [ -n "$CODEX_SOURCE_NEW" ]; then
+    printf 'WARNING: %s is not mirrored in %s; keeping the current public pin\n' \
+        "$CODEX_SOURCE_NEW_NAME" "$MIRROR_TAG" >&2
+    CODEX_SOURCE_NEW=
+fi
 OPENCODE_LOONG=$(opencode_loong_latest)
 DSH_LOONG=$(dsh_loong_latest)
 CLAUDE_JS=$(claude_js_latest)
@@ -467,11 +491,36 @@ ZCODE_BUILD_DESKTOP_URL=$(printf '%s' "$ZCODE_BUILD_TSV" | cut -f4)
 ZCODE_BUILD_DESKTOP_SHA=$(printf '%s' "$ZCODE_BUILD_TSV" | cut -f5)
 ZCODE_BUILD_STANDALONE_URL=$(printf '%s' "$ZCODE_BUILD_TSV" | cut -f6)
 ZCODE_BUILD_STANDALONE_SHA=$(printf '%s' "$ZCODE_BUILD_TSV" | cut -f7)
+if [ -n "$ZCODE_BUILD" ]; then
+    ZVER=${ZCODE_BUILD#v}
+    ZCODE_CLI_NAME="zcode-cli_${ZVER}_loong64.tar.gz"
+    ZCODE_DESKTOP_NAME="zcode-desktop_${ZVER}_loong64.deb"
+    ZCODE_STANDALONE_NAME="zcode-desktop-standalone_${ZVER}_loong64.deb"
+    if mirror_has_asset "$ZCODE_CLI_NAME" \
+        && mirror_has_asset "$ZCODE_DESKTOP_NAME" \
+        && mirror_has_asset "$ZCODE_STANDALONE_NAME"; then
+        ZCODE_BUILD_CLI_URL=$(mirror_url "$ZCODE_CLI_NAME")
+        ZCODE_BUILD_DESKTOP_URL=$(mirror_url "$ZCODE_DESKTOP_NAME")
+        ZCODE_BUILD_STANDALONE_URL=$(mirror_url "$ZCODE_STANDALONE_NAME")
+    else
+        printf 'WARNING: ZCode %s assets are not mirrored in %s; keeping the current public pin\n' \
+            "$ZCODE_BUILD" "$MIRROR_TAG" >&2
+        ZCODE_BUILD=
+    fi
+fi
 
 CCSWITCH_BUILD=$(printf '%s' "$CCSWITCH_BUILD_TSV" | cut -f1)
 CCSWITCH_BUILD_URL=$(printf '%s' "$CCSWITCH_BUILD_TSV" | cut -f2)
 CCSWITCH_BUILD_SHA=$(printf '%s' "$CCSWITCH_BUILD_TSV" | cut -f3)
 CCSWITCH_BUILD_NAME=$(printf '%s' "$CCSWITCH_BUILD_TSV" | cut -f4)
+if [ -n "$CCSWITCH_BUILD" ] && [ -n "$CCSWITCH_BUILD_NAME" ] \
+    && mirror_has_asset "$CCSWITCH_BUILD_NAME"; then
+    CCSWITCH_BUILD_URL=$(mirror_url "$CCSWITCH_BUILD_NAME")
+elif [ -n "$CCSWITCH_BUILD" ]; then
+    printf 'WARNING: cc-switch %s is not mirrored in %s; keeping the current public pin\n' \
+        "$CCSWITCH_BUILD_NAME" "$MIRROR_TAG" >&2
+    CCSWITCH_BUILD=
+fi
 ZCODE_CLI_URL_PIN=$(manifest_value ZCODE_CLI_URL)
 ZCODE_CLI_SHA_PIN=$(manifest_value ZCODE_CLI_SHA256)
 ZCODE_DESKTOP_URL_PIN=$(manifest_value ZCODE_DESKTOP_DEB_URL)
