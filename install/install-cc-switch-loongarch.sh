@@ -1,13 +1,14 @@
 #!/bin/sh
 # install-cc-switch-loongarch.sh
 #
-# Install the official cc-switch Tauri deb from the private LoongArch release.
+# Install the official cc-switch Tauri deb from the public toolkit mirror.
 #
 # Usage:
-#   sudo CC_SWITCH_SOURCE_TOKEN=<token> ./install-cc-switch-loongarch.sh
+#   sudo ./install-cc-switch-loongarch.sh
 #
-# The release repository is private; CC_SWITCH_SOURCE_TOKEN (or GITHUB_TOKEN)
-# must be able to read its release assets.  Set CC_SWITCH_DEB_URL/SHA256 or rely
+# The default URL is in install/versions.env and points at the public
+# agent-binaries release.  CC_SWITCH_SOURCE_TOKEN is only needed if you
+# explicitly override CC_SWITCH_DEB_URL with a private mirror asset.
 # on install/versions.env.
 set -eu
 
@@ -82,7 +83,7 @@ else
         https://api.github.com/*)
             curl -fL --retry 3 --connect-timeout 20 \
                 -H "Accept: application/octet-stream" -o "$DEB" "$CC_SWITCH_DEB_URL" \
-                || die "failed to download cc-switch deb (set CC_SWITCH_SOURCE_TOKEN for the private release)" ;;
+                || die "failed to download cc-switch deb from the public agent-binaries mirror" ;;
         *)
             curl -fL --retry 3 --connect-timeout 20 -o "$DEB" "$CC_SWITCH_DEB_URL" \
                 || die "failed to download cc-switch deb" ;;

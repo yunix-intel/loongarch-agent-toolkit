@@ -3,6 +3,17 @@
 Practical tools for running AI coding agents on **LoongArch (loongarch64)**
 Linux, built and verified on Loongnix 6.6.52 with ABI2.0 userspace.
 
+## Binary distribution
+
+Public installers download the reviewed binaries from this repository's
+[`agent-binaries`](https://github.com/yunix-intel/loongarch-agent-toolkit/releases/tag/agent-binaries)
+release. The build source repositories (`loongarch-agent-builds` and
+`cc-switch-loongarch`) are private; their reviewed assets are mirrored here.
+`install/versions.env` points only at this public mirror, and no token is
+needed to install. When a new build is added, mirror the asset to
+`agent-binaries` first: the version watch refuses to move a public pin to a
+missing mirror asset.
+
 This repository collects three pieces of work:
 
 | Component | What it is | Status |
@@ -11,16 +22,18 @@ This repository collects three pieces of work:
 | [`zcode-tauri/`](zcode-tauri/) | Lightweight Tauri 2 shell around the ZCode Web UI | Working; release binary and `.deb` built |
 | [`install/`](install/) | Installers for ABI2.0 Node, `codex`, `opencode`, `dsh`, Claude Code, ZCode and cc-switch | Working; native CLIs, ZCode TUI, Claude Code 2.1.112 and cc-switch deb installers |
 
-`zcode-tauri/` and `loongarch-agent-builds/vendor/zcode-tauri` share the same
-source files; only the packaging variants differ. Check the invariant with
-`scripts/check-zcode-tauri-sync.sh /path/to/loongarch-agent-builds`.
+`zcode-tauri/` and the private build repository's
+`vendor/zcode-tauri` share the same source files; only the packaging variants
+differ. Check the invariant with
+`scripts/check-zcode-tauri-sync.sh <private-builds-checkout>`.
 
 The official [`farion1231/cc-switch`](https://github.com/farion1231/cc-switch)
 Tauri app **has been built for loongarch64**: upstream v4.0.19 compiles with
-Rust 1.97.1 and its full UI has been verified under Xvfb. The port lives in the
-public repository
-[`yunix-intel/cc-switch-loongarch`](https://github.com/yunix-intel/cc-switch-loongarch);
-build details are in
+Rust 1.97.1 and its full UI has been verified under Xvfb. The build source is
+the private `yunix-intel/cc-switch-loongarch` repository; the reviewed deb is
+mirrored in this toolkit's public
+[`agent-binaries`](https://github.com/yunix-intel/loongarch-agent-toolkit/releases/tag/agent-binaries)
+release. Build details are in
 [`docs/cc-switch-loongarch.md`](docs/cc-switch-loongarch.md). `ccswitch-lite`
 remains a lighter single-binary alternative.
 
@@ -172,46 +185,38 @@ unset CODEX_SOURCE_TOKEN
 
 `CODEX_SOURCE_URL` 支持 `http(s)://` 或本地 `.tar.gz`；使用本地归档时再显式
 覆盖为 `CODEX_SOURCE_URL=/path/to/codex-rust-v0.164.0-loongarch64.tar.gz`。
-私有 GitHub release 资产需 `CODEX_SOURCE_TOKEN`（或 `GITHUB_TOKEN`）；安装器
-在解包前校验 SHA-256，并拒绝包含绝对路径、`..` 或可执行入口 symlink 的条目。
+公共镜像无需 token；如果显式改用私有 GitHub API asset，可设置
+`CODEX_SOURCE_TOKEN`。安装器在解包前校验 SHA-256，并拒绝包含绝对路径、`..`
+或可执行入口 symlink 的条目。
 
 ### ZCode CLI / desktop
 
-ZCode 的 CLI 与两个 Tauri 桌面 deb 在私有
-`yunix-intel/loongarch-agent-builds` 的 release 中。`install-zcode-loongarch.sh`
-支持三种通道：
+ZCode 的 CLI 与两个 Tauri 桌面 deb 镜像在公共
+[`agent-binaries`](https://github.com/yunix-intel/loongarch-agent-toolkit/releases/tag/agent-binaries)
+release 中；安装器不需要 token。`install-zcode-loongarch.sh` 支持三种通道：
 
 ```sh
 # 默认 cli 通道；URL/SHA 已记录在 versions.env。
-# builds 仓库是私有的，需要能读取 release asset 的 token。
-# 不要把 token 写在命令行上（会进 shell 历史和 ps）：先读入环境，再 sudo -E。
-read -r -s -p 'GitHub token: ' ZCODE_SOURCE_TOKEN; echo
-export ZCODE_SOURCE_TOKEN
 sudo -E ./install/install-zcode-loongarch.sh
-unset ZCODE_SOURCE_TOKEN
 
-# 或显式覆盖资产（适合其他 release）
-read -r -s -p 'GitHub token: ' ZCODE_SOURCE_TOKEN; echo
-export ZCODE_SOURCE_TOKEN
+# 显式覆盖资产（适合其他 mirror/release）
 sudo -E ZCODE_CHANNEL=cli \
-  ZCODE_CLI_URL=https://api.github.com/repos/yunix-intel/loongarch-agent-builds/releases/assets/<id> \
-  ZCODE_CLI_SHA256=<64-hex> \
+  ZCODE_CLI_URL=https://github.com/yunix-intel/loongarch-agent-toolkit/releases/download/agent-binaries/zcode-cli_3.15.1_loong64.tar.gz \
+  ZCODE_CLI_SHA256=6b070c44b1e9fbd6b0040a8f20e39f03a224242f366584655da7a65b29a44cd0 \
   ./install/install-zcode-loongarch.sh
-unset ZCODE_SOURCE_TOKEN
 
 # 轻量 Tauri 桌面（捆绑 CLI，依赖系统 Node >= 24）
-sudo -E ZCODE_CHANNEL=desktop ZCODE_DESKTOP_DEB_URL=... ZCODE_DESKTOP_DEB_SHA256=... \
-  ./install/install-zcode-loongarch.sh
+sudo -E ZCODE_CHANNEL=desktop ./install/install-zcode-loongarch.sh
 
 # 自带 Node + CLI 的桌面版
-sudo -E ZCODE_CHANNEL=standalone ZCODE_STANDALONE_DEB_URL=... ZCODE_STANDALONE_DEB_SHA256=... \
-  ./install/install-zcode-loongarch.sh
+sudo -E ZCODE_CHANNEL=standalone ./install/install-zcode-loongarch.sh
 ```
 
 资产 URL/SHA 也可以写进 `install/versions.env` 的 `ZCODE_*` 字段。
 linux-loong64 的 CLI 现在捆绑 native opentui 渲染器（`libopentui.so`）以及
 koffi/unsafe-pointer 的 loong64 构建，默认入口启动 TUI；`zcode --web` 仍可用。
-构建流程见 `loongarch-agent-builds` 的 `build-opentui`/`build-cli` job。
+构建源在私有 `loongarch-agent-builds`，产物经审核后镜像到上面的公共 release；
+构建流程见其 `build-opentui`/`build-cli` job。
 
 ### Claude Code（2.1.112 纯 JS 版）
 
@@ -229,18 +234,16 @@ sudo ./install/install-claude-code-loongarch.sh
 
 ### cc-switch 官方 Tauri 版
 
-官方 cc-switch 的 loong64 deb 在私有 `cc-switch-loongarch` release 中：
+官方 cc-switch 的 loong64 deb 镜像在公共 `agent-binaries` release 中：
 
 ```sh
-read -r -s -p 'GitHub token: ' CC_SWITCH_SOURCE_TOKEN; echo
-export CC_SWITCH_SOURCE_TOKEN
 sudo -E ./install/install-cc-switch-loongarch.sh
-unset CC_SWITCH_SOURCE_TOKEN
 ```
 
 安装器校验 deb SHA-256 后通过 apt/dpkg 安装，启动器是 `/usr/bin/cc-switch`。
 `ccswitch-lite` 的 `/usr/local/bin/ccswitch` 不受影响，两者可以并存。
-资产 URL/SHA 在 `install/versions.env` 的 `CC_SWITCH_DEB_*` 字段。
+资产 URL/SHA 在 `install/versions.env` 的 `CC_SWITCH_DEB_*` 字段。构建源在私有
+`cc-switch-loongarch`；公开用户只需要上面的公共 mirror。
 
 Why ABI matters, and why Node 22.16 silently does nothing for `dsh`, is
 documented in [`docs/abi-and-node.md`](docs/abi-and-node.md).
@@ -261,8 +264,9 @@ needs no loong64 runner. It reads `install/versions.env`, queries:
 - source-built Codex releases (including drafts) in the private
   `yunix-intel/loongarch-agent-builds` repository when `AUTO_ALIGN_TOKEN` can
   read it; a newer build updates `CODEX_SOURCE_VERSION/URL/SHA256`, while
-  `CODEX_CHANNEL` stays `npm` unless changed by hand. Without the token the
-  issue reports `source build available (private; set AUTO_ALIGN_TOKEN or URL)`
+  `CODEX_CHANNEL` stays `npm` unless changed by hand. The URL is written only
+  after the asset exists in the public `agent-binaries` mirror. Without the
+  token the issue reports `source build available (private; set AUTO_ALIGN_TOKEN or URL)`
   and the npm pin is not touched.
 
 It then writes a table with `upstream / loong64 可用 / selected / 状态` and

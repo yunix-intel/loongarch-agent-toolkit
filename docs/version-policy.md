@@ -13,12 +13,12 @@
 | 工具 | selected 来源 | 上游领先时的状态 |
 | --- | --- | --- |
 | Codex (npm) | Loongnix registry 中最新的 `@openai/codex-<ver>-linux-loong64` | `waiting-for-loong64-port` |
-| Codex (source) | 私有 builds 仓库中最新 `codex-rust-v<ver>-loongarch64.tar.gz`；仅在 `CODEX_CHANNEL=source` 时作为默认通道 | `source-private` / `source-available` |
+| Codex (source) | 私有 builds 仓库中最新 `codex-rust-v<ver>-loongarch64.tar.gz`，镜像到公共 `agent-binaries` release；仅在 `CODEX_CHANNEL=source` 时作为默认通道 | `source-private` / `source-available` |
 | OpenCode | `opencode-linux-loong64` 的 `latest` | `waiting-for-loong64-port` |
 | DSH | Loongnix registry 的 `@deepseek-ai/dsh@latest` | `waiting-upstream-sync` |
 | Claude Code | npm 上**最后一个仍包含 `cli.js`** 的版本 | `native-only` |
-| ZCode | `loongarch-agent-builds` 中资产齐全的最新 `zcode-v<ver>` release | `waiting-for-loongarch-build` |
-| cc-switch | `cc-switch-loongarch` 中最新带 deb 的 `loongarch-v<ver>` release | `waiting-for-loongarch-release` |
+| ZCode | 私有 `loongarch-agent-builds` 中资产齐全的最新 `zcode-v<ver>` release，镜像到公共 `agent-binaries` | `waiting-for-loongarch-build` |
+| cc-switch | 私有 `cc-switch-loongarch` 中最新带 deb 的 `loongarch-v<ver>` release，镜像到公共 `agent-binaries` | `waiting-for-loongarch-release` |
 
 只有当 Loongnix（或源码构建）真的产出了 loong64 版本，workflow 才会把
 对应通道的 selected 往上调。上游发了新版但没有 loong64 构建时，issue 会标注
@@ -42,14 +42,15 @@ release 资产需 `CODEX_SOURCE_TOKEN`（或 `GITHUB_TOKEN`），URL 用 API ass
 地址（draft release 不能用 `browser_download_url`）。解包前校验 SHA-256，
 并拒绝绝对路径/`..` 条目。
 
-`AUTO_ALIGN_TOKEN` 配置后，watch 会用该 token 读取 builds 仓库（含 draft
+`AUTO_ALIGN_TOKEN` 配置后，watch 会用该 token 读取私有 builds 仓库（含 draft
 release），发现更高版本时同步更新上述三个 source 字段；没有 token 时 issue
 标注 `source build available (private; set AUTO_ALIGN_TOKEN or URL)`，不会
 改动 npm pin。同一个 token 也用于读取私有 `cc-switch-loongarch` 仓库；如果是
 fine-grained token，必须把 `cc-switch-loongarch` 也加入 Repository access，
 否则状态为 `private-repo-unreadable`，issue 会提示补授权。完全没有配置
 token 时，ZCode/cc-switch 也显示 `private-repo-unreadable`，不会伪装成
-`up-to-date`。
+`up-to-date`。watch 只会把 URL 写向公共 `agent-binaries` 中已存在的资产；
+镜像缺失时保留旧 pin 并报告 `mirror-missing`，不会生成 404 的公开 URL。
 
 **版本号、URL 和 SHA-256 永远作为一个整体更新。** 只看上游版本号就改
 `ZCODE_TAG`/`CC_SWITCH_VERSION`、却保留旧资产的 URL/SHA，会让安装器把旧
@@ -74,9 +75,10 @@ deb 当成新版本安装。watch 现在先解析出与版本对应的 asset（d
 
 `zai-org/ZCode` 的 GitHub release 页面滞后于实际的 semver tag（当前 tag
 `v3.15.1`，release 仍是 `v3.14.3`）。tag 本身只说明上游发了版本，不代表
-LoongArch 构建已经产出，所以 selected 取 `loongarch-agent-builds` 中**三件
+LoongArch 构建已经产出，所以 selected 取私有 `loongarch-agent-builds` 中**三件
 资产齐全**（CLI tarball、thin deb、standalone deb）的最新 `zcode-v<ver>`
-release。上游 tag 只作为 “upstream” 列展示：
+release，并确认三件资产已镜像到公共 `agent-binaries`。上游 tag 只作为
+“upstream” 列展示：
 
 - tag 没有对应构建 → `waiting-for-loongarch-build`，pin 不动；
 - 构建版本领先 pin → `update-available`，PR 同时更新 `ZCODE_TAG`、
@@ -93,15 +95,16 @@ release。上游 tag 只作为 “upstream” 列展示：
 
 linux-loong64 的 ZCode CLI 现在自带 native opentui 渲染器，并捆绑 koffi /
 unsafe-pointer 的 loong64 构建；默认入口启动 TUI，`zcode --web` 仍可用。
-构建流程在 `loongarch-agent-builds` 的 `build-opentui`（x86_64 交叉编译
-`libopentui.so`）和 `build-cli`（loong64 构建 koffi/unsafe-pointer）job 中。
+构建流程在私有 `loongarch-agent-builds` 的 `build-opentui`（x86_64 交叉编译
+`libopentui.so`）和 `build-cli`（loong64 构建 koffi/unsafe-pointer）job 中；
+产物经审核后镜像到公共 `agent-binaries`。
 
 另外两个安装器：
 
 - `install/install-claude-code-loongarch.sh`：固定安装最后一个纯 JS 版
   Claude Code 2.1.112，关闭自动更新；native-only 的新版只保留 qemu wrapper。
-- `install/install-cc-switch-loongarch.sh`：校验并安装私有
-  `cc-switch-loongarch` release 的 v4.0.19 deb，`/usr/bin/cc-switch` 与
+- `install/install-cc-switch-loongarch.sh`：校验并安装公共
+  `agent-binaries` 镜像中的 v4.0.21 deb，`/usr/bin/cc-switch` 与
   `ccswitch-lite` 的 `/usr/local/bin/ccswitch` 可以并存。
 
 ## 自动对齐流程

@@ -1,9 +1,10 @@
 #!/bin/sh
 # install-zcode-loongarch.sh
 #
-# Install the loong64 ZCode CLI distribution and/or Tauri desktop deb from a
-# private release.  This script is separate from install-loongarch-agents.sh
-# because ZCode has a Node 24 runtime dependency and a Web-first UI on loong64.
+# Install the loong64 ZCode CLI distribution and/or Tauri desktop deb from the
+# public toolkit agent-binaries mirror.  This script is separate from
+# install-loongarch-agents.sh because ZCode has a Node 24 runtime dependency
+# and a Web-first UI on loong64.
 #
 # Usage:
 #   sudo ZCODE_CHANNEL=cli \
