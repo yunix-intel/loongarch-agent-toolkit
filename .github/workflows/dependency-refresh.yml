@@ -25,7 +25,7 @@ jobs:
 
       - name: Open dependency refresh PR
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.AUTO_ALIGN_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           if git diff --quiet; then
