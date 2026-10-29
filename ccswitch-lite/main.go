@@ -8,6 +8,9 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -1406,6 +1409,10 @@ func cmdWeb(p *Paths, args []string) error {
 	if err := ensureLoopback(*addr); err != nil {
 		return err
 	}
+	token, err := loadOrCreateWebToken(p)
+	if err != nil {
+		return err
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
@@ -1593,15 +1600,15 @@ func cmdWeb(p *Paths, args []string) error {
 
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           webGuard(mux),
+		Handler:           webGuard(mux, token),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
 		return fmt.Errorf("监听 %s 失败: %w", *addr, err)
 	}
-	fmt.Printf("ccswitch-lite web UI: http://%s/\n", *addr)
-	fmt.Println("仅监听本机回环地址；按 Ctrl-C 退出。")
+	fmt.Printf("ccswitch-lite web UI: http://%s/?token=%s\n", *addr, token)
+	fmt.Println("本机 API 需要该 token；token 文件权限为 0600。按 Ctrl-C 退出。")
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt, syscall.SIGTERM)
 	go func() {
@@ -1649,7 +1656,60 @@ func hostIsLoopback(hostport string) bool {
 // requests whose Host is not loopback, whose Origin is not same-site, or whose
 // body is not declared as JSON (a cross-origin JSON request needs a CORS
 // preflight, which this server never grants).
-func webGuard(next http.Handler) http.Handler {
+func webTokenPath(p *Paths) string {
+	return filepath.Join(p.ConfigHome, "ccswitch-lite", "web-token")
+}
+
+// loadOrCreateWebToken keeps the API capability out of the public HTML.  A
+// local user who cannot read the 0600 file cannot call /api/*; the launch URL
+// carries the token once and the UI moves it to sessionStorage.
+func loadOrCreateWebToken(p *Paths) (string, error) {
+	if v := strings.TrimSpace(os.Getenv("CCSWITCH_WEB_TOKEN")); v != "" {
+		if len(v) < 16 {
+			return "", errors.New("CCSWITCH_WEB_TOKEN must be at least 16 characters")
+		}
+		return v, nil
+	}
+	path := webTokenPath(p)
+	if data, err := os.ReadFile(path); err == nil {
+		_ = os.Chmod(path, 0600)
+		if v := strings.TrimSpace(string(data)); len(v) >= 16 {
+			return v, nil
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	var raw [32]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", err
+	}
+	token := hex.EncodeToString(raw[:])
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(path, []byte(token+"\n"), 0600); err != nil {
+		return "", err
+	}
+	_ = os.Chmod(path, 0600)
+	return token, nil
+}
+
+func requestToken(r *http.Request) string {
+	if v := strings.TrimSpace(r.Header.Get("X-CCSwitch-Token")); v != "" {
+		return v
+	}
+	if v := strings.TrimSpace(r.Header.Get("Authorization")); strings.HasPrefix(v, "Bearer ") {
+		return strings.TrimSpace(strings.TrimPrefix(v, "Bearer "))
+	}
+	return ""
+}
+
+func tokenEqual(got, want string) bool {
+	return len(got) == len(want) &&
+		subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
+}
+
+func webGuard(next http.Handler, token string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !hostIsLoopback(r.Host) {
 			writeErr(w, http.StatusForbidden, errors.New("只接受本机回环 Host"))
@@ -1661,6 +1721,13 @@ func webGuard(next http.Handler) http.Handler {
 			// service on a different port must not be able to write here.
 			if err != nil || u.Scheme == "" || !strings.EqualFold(u.Host, r.Host) {
 				writeErr(w, http.StatusForbidden, errors.New("拒绝跨站请求"))
+				return
+			}
+		}
+		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
+			if !tokenEqual(requestToken(r), token) {
+				w.Header().Set("WWW-Authenticate", "Bearer")
+				writeErr(w, http.StatusUnauthorized, errors.New("需要访问 token：请用启动命令输出的 ?token= 地址打开"))
 				return
 			}
 		}

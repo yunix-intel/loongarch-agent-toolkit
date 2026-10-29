@@ -688,6 +688,12 @@ validate_manifest_value() {
                     || die "invalid $key: $value"
             fi
             ;;
+        *_INTEGRITY)
+            if [ -n "$value" ]; then
+                printf '%s' "$value" | grep -Eq '^sha512-[A-Za-z0-9+/]+={0,2}$' \
+                    || die "invalid $key: $value"
+            fi
+            ;;
         *_URL)
             if [ -n "$value" ]; then
                 case "$value" in

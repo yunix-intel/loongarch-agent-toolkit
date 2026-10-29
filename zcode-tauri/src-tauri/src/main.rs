@@ -62,11 +62,24 @@ fn kill_group(pgid: i32, child: &mut Child) {
         }
     }
     let deadline = Instant::now() + Duration::from_secs(5);
+    let pid = child.id() as libc::id_t;
+    let mut exited = false;
     loop {
-        match child.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) => {}
-            Err(_) => break,
+        // WNOWAIT leaves the child as a zombie until child.wait() below.  The
+        // zombie keeps both the PID and PGID reserved, so the process group
+        // cannot be recycled between this check and the group kill.
+        let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+        let rc = unsafe {
+            libc::waitid(
+                libc::P_PID,
+                pid,
+                &mut info,
+                libc::WEXITED | libc::WNOWAIT | libc::WNOHANG,
+            )
+        };
+        if rc == 0 && unsafe { info.si_pid() } == pid as libc::pid_t {
+            exited = true;
+            break;
         }
         if Instant::now() >= deadline {
             break;
@@ -74,12 +87,15 @@ fn kill_group(pgid: i32, child: &mut Child) {
         thread::sleep(Duration::from_millis(100));
     }
     if pgid > 1 {
-        // The direct child can exit before its helpers. Signal the group only
-        // if members remain, so a reused PGID is never hit.
-        if unsafe { libc::kill(-pgid, 0) } == 0 {
-            unsafe {
-                libc::kill(-pgid, libc::SIGKILL);
-            }
+        // The child is still unreaped, so this PGID cannot have been reused.
+        unsafe {
+            libc::kill(-pgid, libc::SIGKILL);
+        }
+    }
+    if !exited {
+        // SIGKILL the direct child too; wait() reaps it below.
+        unsafe {
+            libc::kill(pid as libc::pid_t, libc::SIGKILL);
         }
     }
     let _ = child.wait();
