@@ -622,8 +622,40 @@ consider OPENCODE_VERSION 'opencode-ai' "$OPENCODE_PIN" "$OPENCODE_SEL" 'opencod
 consider DSH_VERSION '@deepseek-ai/dsh' "$DSH_PIN" "$DSH_SEL" 'Loongnix registry latest'
 consider CLAUDE_CODE_VERSION '@anthropic-ai/claude-code' "$CLAUDE_PIN" "$CLAUDE_SEL" 'newest tarball containing cli.js'
 
+validate_manifest_value() {
+    local key=$1 value=$2
+    case "$value" in
+        *$'\n'*|*$'\r'*) die "manifest value for $key contains a newline" ;;
+    esac
+    case "$key" in
+        *_VERSION|*_TAG)
+            printf '%s' "$value" \
+                | grep -Eq '^[vV]?[0-9]+(\.[0-9]+)+([._+-][0-9A-Za-z._-]+)?$' \
+                || die "invalid $key: $value"
+            ;;
+        *_SHA256)
+            if [ -n "$value" ]; then
+                printf '%s' "$value" | grep -Eq '^[0-9a-fA-F]{64}$' \
+                    || die "invalid $key: $value"
+            fi
+            ;;
+        *_URL)
+            if [ -n "$value" ]; then
+                case "$value" in
+                    https://*) ;;
+                    *) die "invalid $key URL: $value" ;;
+                esac
+                case "$value" in
+                    *[[:space:]]*) die "invalid $key URL: whitespace" ;;
+                esac
+            fi
+            ;;
+    esac
+}
+
 set_manifest_value() {
     local key=$1 value=$2 escaped
+    validate_manifest_value "$key" "$value"
     escaped=$(printf '%s' "$value" | sed 's/[&|\\]/\\&/g')
     sed -i.bak "s|^[[:space:]]*${key}=.*|${key}=${escaped}|" "$MANIFEST"
     rm -f "$MANIFEST.bak"
@@ -631,6 +663,7 @@ set_manifest_value() {
 
 set_fallback_value() {
     local key=$1 value=$2 escaped
+    validate_manifest_value "$key" "$value"
     escaped=$(printf '%s' "$value" | sed 's/[&|\\]/\\&/g')
     sed -i.bak "s|^${key}_DEFAULT=.*|${key}_DEFAULT=${escaped}|" "$INSTALLER"
     rm -f "$INSTALLER.bak"
