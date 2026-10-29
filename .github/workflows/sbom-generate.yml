@@ -1,13 +1,23 @@
 name: Generate dependency SBOMs
 
 on:
+  workflow_run:
+    workflows: ["Mirror agent binaries"]
+    types: [completed]
+  schedule:
+    - cron: '17 5 * * *'
   workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: sbom-generate
+  cancel-in-progress: true
+
 jobs:
   generate:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -15,12 +25,33 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Fetch upstream source trees at the released tags
+      - name: Resolve versions from the public mirror
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          git clone -q --depth 1 --branch rust-v0.164.0 https://github.com/openai/codex.git codex
-          git clone -q --depth 1 --branch v3.15.1 https://github.com/zai-org/ZCode.git zcode
-          git clone -q --depth 1 --branch v4.0.21 https://github.com/farion1231/cc-switch.git cc-switch
+          ASSETS=$(gh release view agent-binaries --repo yunix-intel/loongarch-agent-toolkit \
+            --json assets --jq '.assets[].name')
+          CODEX_VER=$(printf '%s\n' "$ASSETS" \
+            | sed -n 's/^codex-rust-v\([0-9.]*\)-loongarch64\.tar\.gz$/\1/p' | sort -V | tail -n 1)
+          ZCODE_VER=$(printf '%s\n' "$ASSETS" \
+            | sed -n 's/^zcode-cli_\([0-9.]*\)_loong64\.tar\.gz$/\1/p' | sort -V | tail -n 1)
+          CC_VER=$(printf '%s\n' "$ASSETS" \
+            | sed -n 's/^cc-switch_\([0-9.]*\)\.loong64\.1_loong64\.deb$/\1/p' | sort -V | tail -n 1)
+          [ -n "$CODEX_VER" ] && [ -n "$ZCODE_VER" ] && [ -n "$CC_VER" ] || {
+            echo "cannot resolve all mirror versions: Codex=$CODEX_VER ZCode=$ZCODE_VER cc-switch=$CC_VER" >&2
+            exit 1
+          }
+          echo "CODEX_VER=$CODEX_VER" >> "$GITHUB_ENV"
+          echo "ZCODE_VER=$ZCODE_VER" >> "$GITHUB_ENV"
+          echo "CC_VER=$CC_VER" >> "$GITHUB_ENV"
+
+      - name: Fetch upstream source trees at the mirrored tags
+        run: |
+          set -euo pipefail
+          git clone -q --depth 1 --branch "rust-v${CODEX_VER}" https://github.com/openai/codex.git codex
+          git clone -q --depth 1 --branch "v${ZCODE_VER}" https://github.com/zai-org/ZCode.git zcode
+          git clone -q --depth 1 --branch "v${CC_VER}" https://github.com/farion1231/cc-switch.git cc-switch
 
       - name: Install syft
         run: |

@@ -12,8 +12,9 @@ release. The build source repositories (`loongarch-agent-builds` and
 The release includes `SHA256SUMS`, `SBOM.spdx.json` (component summary),
 per-artifact dependency SBOMs `SBOM-codex.spdx.json`,
 `SBOM-zcode.spdx.json`, `SBOM-cc-switch.spdx.json`, license/NOTICE files and
-a GitHub build-provenance attestation. `mirror-attest.yml` refreshes the
-attestation on release changes, after SBOM generation, and daily.
+a GitHub build-provenance attestation. `mirror-upload.yml` mirrors published
+private assets daily, then chains SBOM generation and automatic attestation;
+`agent-version-watch` updates the public pins after the mirror has them.
 `install/versions.env` points only at this public mirror, and no token is
 needed to install. When a new build is added, mirror the asset to
 `agent-binaries` first: the version watch refuses to move a public pin to a
