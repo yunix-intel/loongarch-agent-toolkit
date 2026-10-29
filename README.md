@@ -9,6 +9,8 @@ Public installers download the reviewed binaries from this repository's
 [`agent-binaries`](https://github.com/yunix-intel/loongarch-agent-toolkit/releases/tag/agent-binaries)
 release. The build source repositories (`loongarch-agent-builds` and
 `cc-switch-loongarch`) are private; their reviewed assets are mirrored here.
+The release includes `SHA256SUMS`, `SBOM.spdx.json`, license/NOTICE files and
+a GitHub build-provenance attestation.
 `install/versions.env` points only at this public mirror, and no token is
 needed to install. When a new build is added, mirror the asset to
 `agent-binaries` first: the version watch refuses to move a public pin to a
