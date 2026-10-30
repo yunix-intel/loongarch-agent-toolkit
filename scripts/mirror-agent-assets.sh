@@ -147,9 +147,9 @@ signature_status() {
 }
 
 verify_signatures() {
-    local dir=$1 label=$2
+    local dir=$1 label=$2 key=${3:-$ROOT/release-pubkey.pem}
     if [ -f "$dir/BINARIES-SHA256SUMS.sig" ] || [ -f "$dir/provenance.json.sig" ]; then
-        bash "$ROOT/scripts/verify-release-signature.sh" "$dir"
+        PUBKEY="$key" bash "$ROOT/scripts/verify-release-signature.sh" "$dir"
     else
         warn "no signed manifest for $label (older release)"
     fi
@@ -187,7 +187,7 @@ done
 
 verify_signatures "$TMP/codex" "$CODEX_TAG"
 verify_signatures "$TMP/zcode" "$ZCODE_TAG"
-verify_signatures "$TMP/cc-switch" "$CC_TAG"
+verify_signatures "$TMP/cc-switch" "$CC_TAG" "$ROOT/release-pubkey-ccswitch.pem"
 
 verify_checksums "$TMP/codex" "$BUILDS_REPO" "$CODEX_TAG"
 verify_checksums "$TMP/zcode" "$BUILDS_REPO" "$ZCODE_TAG"

@@ -29,7 +29,9 @@ rebuilds `SHA256SUMS` from the final asset list. Only after promotion do
 **Verify mirrored SBOMs** and **Attest mirror assets** run. Per-component
 signed manifests are `codex-BINARIES-SHA256SUMS`, `zcode-BINARIES-SHA256SUMS`,
 `cc-switch-BINARIES-SHA256SUMS` and the matching `*-provenance.json`; verify
-them with [`release-pubkey.pem`](release-pubkey.pem). `agent-version-watch`
+them with [`release-pubkey.pem`](release-pubkey.pem) (Codex/ZCode) or
+[`release-pubkey-ccswitch.pem`](release-pubkey-ccswitch.pem) (cc-switch).
+`agent-version-watch`
 updates the public pins only after the promoted public release contains them.
 
 `install/versions.env` points only at this public mirror, and no token is
