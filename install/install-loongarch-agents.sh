@@ -252,15 +252,6 @@ install_pkg() {
     if [ -n "$integrity" ]; then
         need openssl
     fi
-    local -a npm_args
-    npm_args=(install -g
-        --prefix "$NODE_PREFIX"
-        --registry "$NPM_REGISTRY"
-        --fetch-retries 3
-        --no-audit --no-fund)
-    if [ "$ignore_scripts" = 1 ]; then
-        npm_args+=(--ignore-scripts)
-    fi
     attempt=1
     log "installing $pkg@$version from $NPM_REGISTRY"
     while :; do
@@ -287,7 +278,16 @@ install_pkg() {
                 pack_failed=1
             fi
         fi
-        if [ "$pack_failed" -eq 0 ] && "$NPM" "${npm_args[@]}" "$src"; then
+        set -- install -g \
+            --prefix "$NODE_PREFIX" \
+            --registry "$NPM_REGISTRY" \
+            --fetch-retries 3 \
+            --no-audit --no-fund
+        if [ "$ignore_scripts" = 1 ]; then
+            set -- "$@" --ignore-scripts
+        fi
+        set -- "$@" "$src"
+        if [ "$pack_failed" -eq 0 ] && "$NPM" "$@"; then
             [ -z "$packdir" ] || rm -rf "$packdir"
             return 0
         fi
