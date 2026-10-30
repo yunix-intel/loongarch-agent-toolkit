@@ -6,7 +6,7 @@ install or wrap. The tools below remain under their own licenses:
 
 | Component | Upstream | License / note |
 | --- | --- | --- |
-| cc-switch | https://github.com/farion1231/cc-switch | Reference for the 3P gateway layout. The private `yunix-intel/cc-switch-loongarch` build source is mirrored as a public deb in this repository's `agent-binaries` release; not vendored here. |
+| cc-switch | https://github.com/farion1231/cc-switch | MIT. The private `yunix-intel/cc-switch-loongarch` build source is mirrored as a public deb in this repository's `agent-binaries` release; see `CC-SWITCH-LICENSE`; not vendored here. |
 | ccswitch-lite | this repository | MIT. Implemented from scratch with the Go standard library. |
 | Tauri | https://tauri.app/ | MIT / Apache-2.0. Pulled from crates.io at build time; see `zcode-tauri/src-tauri/Cargo.lock`. |
 | ZCode | https://github.com/zai-org/ZCode | Apache-2.0 for first-party code. The loong64 CLI/desktop builds are mirrored in this repository's `agent-binaries` release; bundled third-party components remain under their own terms in `ZCode-NOTICE.md`. |

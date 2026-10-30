@@ -18,7 +18,9 @@ jobs:
           fetch-depth: 0
 
       - name: Check for whitespace errors
-        run: git diff --check "origin/${{ github.base_ref }}...HEAD"
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: git diff --check "origin/$BASE_REF...HEAD"
 
       - name: Check for unmerged conflict markers
         run: |

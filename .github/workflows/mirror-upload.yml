@@ -1,4 +1,4 @@
-name: Mirror agent binaries
+name: Stage agent binaries
 
 on:
   schedule:
@@ -9,11 +9,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: mirror-agent-binaries
+  group: stage-agent-binaries
   cancel-in-progress: false
 
 jobs:
-  mirror:
+  stage:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -21,8 +21,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Mirror published private build assets
+      - name: Stage published private build assets
         env:
           AUTO_ALIGN_TOKEN: ${{ secrets.AUTO_ALIGN_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/mirror-agent-assets.sh
+
+      - name: Point to the manual promotion gate
+        if: success()
+        run: |
+          echo "Assets staged in the draft \`agent-binaries-staging\` release." >> "$GITHUB_STEP_SUMMARY"
+          echo "Review them, then run **Promote staged binaries** with confirm=PROMOTE." >> "$GITHUB_STEP_SUMMARY"

@@ -1,9 +1,6 @@
 name: Attest mirror assets
 
 on:
-  workflow_run:
-    workflows: ["Mirror agent binaries"]
-    types: [completed]
   schedule:
     - cron: '17 6 * * *'
   workflow_dispatch:

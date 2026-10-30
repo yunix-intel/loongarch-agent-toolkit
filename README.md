@@ -9,21 +9,30 @@ Public installers download the reviewed binaries from this repository's
 [`agent-binaries`](https://github.com/yunix-intel/loongarch-agent-toolkit/releases/tag/agent-binaries)
 release. The build source repositories (`loongarch-agent-builds` and
 `cc-switch-loongarch`) are private; their reviewed assets are mirrored here.
-The release includes `SHA256SUMS`, `SBOM.spdx.json` (component summary
-generated from the mirrored bytes), per-artifact dependency SBOMs
-`SBOM-codex.spdx.json`, `SBOM-zcode.spdx.json`, `SBOM-cc-switch.spdx.json`,
-license/NOTICE files and a GitHub artifact attestation for the mirrored bytes.
-The per-artifact SBOMs are generated inside the private build workflows, where
-the patched/overridden source tree exists; this public repository copies and
-verifies them. `mirror-upload.yml` mirrors published private assets daily,
-refreshes the public `SHA256SUMS`, and chains SBOM verification and automatic
-attestation; `agent-version-watch` updates the public pins after the mirror has
-them. Private releases stay **draft** until a human publishes them, and
-`mirror-upload` only selects published (`draft == false`) releases.
+The release includes `SHA256SUMS` generated from the **final release asset
+list**, `SBOM.spdx.json` (component summary generated from the mirrored bytes),
+per-artifact dependency SBOMs `SBOM-codex.spdx.json`,
+`SBOM-zcode.spdx.json`, `SBOM-cc-switch.spdx.json`, license/NOTICE files and a
+GitHub artifact attestation for the mirrored bytes. The per-artifact SBOMs are
+generated inside the private build workflows, where the patched/overridden
+source tree exists; this public repository copies and verifies them.
+
+Private build releases stay **draft** until a human publishes them. The daily
+(or manual) **Stage agent binaries** workflow copies published private assets
+into a draft `agent-binaries-staging` release; it never writes the public
+release. A maintainer reviews the staging draft, then runs **Promote staged
+binaries** with `confirm=PROMOTE` and `dry_run=false`. Promotion verifies the
+staging `SHA256SUMS` and each component's signature; unsigned legacy
+components require `allow_unsigned=true`. Only after promotion do **Verify
+mirrored SBOMs** and **Attest mirror assets** run. Per-component signed
+manifests are `codex-BINARIES-SHA256SUMS`, `zcode-BINARIES-SHA256SUMS`,
+`cc-switch-BINARIES-SHA256SUMS` and the matching `*-provenance.json`; verify
+them with [`release-pubkey.pem`](release-pubkey.pem). `agent-version-watch`
+updates the public pins only after the promoted public release contains them.
+
 `install/versions.env` points only at this public mirror, and no token is
-needed to install. When a new build is added, mirror the asset to
-`agent-binaries` first: the version watch refuses to move a public pin to a
-missing mirror asset.
+needed to install. When a new build is added, stage and promote it first: the
+version watch refuses to move a public pin to a missing public asset.
 
 This repository collects three pieces of work:
 
