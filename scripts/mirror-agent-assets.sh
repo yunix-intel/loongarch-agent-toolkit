@@ -11,6 +11,7 @@ BUILDS_REPO=yunix-intel/loongarch-agent-builds
 CC_REPO=yunix-intel/cc-switch-loongarch
 MIRROR_REPO=yunix-intel/loongarch-agent-toolkit
 MIRROR_TAG=agent-binaries
+MIRROR_BASE="https://github.com/$MIRROR_REPO/releases/download/$MIRROR_TAG"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/mirror-agent-assets.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT HUP INT TERM
 ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
