@@ -17,7 +17,7 @@ GitHub artifact attestation for the mirrored bytes. The per-artifact SBOMs are
 generated inside the private build workflows, where the patched/overridden
 source tree exists; this public repository copies and verifies them.
 
-Private build releases stay **draft** until a human publishes them. The daily
+Private build releases stay **draft** until a human publishes them. The weekly
 (or manual) **Check agent binaries** workflow verifies the latest published
 private releases and reports their checksums and signature status; it never
 writes the public release. The private releases themselves are the staging
@@ -302,7 +302,7 @@ asset is mirrored.
 ## Agent version watch and alignment
 
 [`.github/workflows/agent-version-watch.yml`](.github/workflows/agent-version-watch.yml)
-runs daily at 02:17 UTC (and on demand) on GitHub-hosted `ubuntu-latest`, so it
+runs every Monday at 02:17 UTC (and on demand) on GitHub-hosted `ubuntu-latest`, so it
 needs no loong64 runner. It reads `install/versions.env`, queries:
 
 - upstream npm `latest` for Codex, OpenCode, DSH and Claude Code;

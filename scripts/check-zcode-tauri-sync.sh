@@ -27,6 +27,10 @@ SHARED=(
     packaging/gen_icons.py
     packaging/send_wm_delete.c
     icons/zcode-tauri.svg
+    src-tauri/icons/32x32.png
+    src-tauri/icons/128x128.png
+    src-tauri/icons/128x128@2x.png
+    src-tauri/icons/icon.png
 )
 
 fail=0

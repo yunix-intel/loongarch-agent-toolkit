@@ -64,7 +64,7 @@ the patched/overridden source tree exists, and are copied here verbatim; the
 public `sbom-generate` workflow only verifies them and the summary checksums.
 The promotion chain is:
 
-1. **Check agent binaries** (daily/manual) verifies the latest published
+1. **Check agent binaries** (weekly/manual) verifies the latest published
    private assets, their private `SHA256SUMS`, and their signature status, and
    writes a report; it never writes the public release. Unreviewed assets stay
    in the private releases;

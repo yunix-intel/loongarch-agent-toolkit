@@ -109,7 +109,7 @@ unsafe-pointer 的 loong64 构建；默认入口启动 TUI，`zcode --web` 仍�
 
 ## 自动对齐流程
 
-1. 每日 02:17 UTC（或手动）运行 `agent-version-watch.yml`。
+1. 每周一 02:17 UTC（或手动）运行 `agent-version-watch.yml`。
 2. `check-agent-versions.sh` 计算每个工具的 selected，与 `versions.env`
    比较。
 3. 有差异：更新 `versions.env`、installer 的 `BEGIN/END VERSION FALLBACKS`
