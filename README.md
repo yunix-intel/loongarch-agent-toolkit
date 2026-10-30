@@ -18,14 +18,16 @@ generated inside the private build workflows, where the patched/overridden
 source tree exists; this public repository copies and verifies them.
 
 Private build releases stay **draft** until a human publishes them. The daily
-(or manual) **Stage agent binaries** workflow copies published private assets
-into a draft `agent-binaries-staging` release; it never writes the public
-release. A maintainer reviews the staging draft, then runs **Promote staged
-binaries** with `confirm=PROMOTE` and `dry_run=false`. Promotion verifies the
-staging `SHA256SUMS` and each component's signature; unsigned legacy
-components require `allow_unsigned=true`. Only after promotion do **Verify
-mirrored SBOMs** and **Attest mirror assets** run. Per-component signed
-manifests are `codex-BINARIES-SHA256SUMS`, `zcode-BINARIES-SHA256SUMS`,
+(or manual) **Check agent binaries** workflow verifies the latest published
+private releases and reports their checksums and signature status; it never
+writes the public release. The private releases themselves are the staging
+area. A maintainer reviews them, then runs **Promote staged binaries** with
+`confirm=PROMOTE` and `dry_run=false`. Promotion re-downloads and verifies the
+private assets, requires signatures unless `allow_unsigned=true` is explicitly
+set for a reviewed legacy release, then publishes to `agent-binaries` and
+rebuilds `SHA256SUMS` from the final asset list. Only after promotion do
+**Verify mirrored SBOMs** and **Attest mirror assets** run. Per-component
+signed manifests are `codex-BINARIES-SHA256SUMS`, `zcode-BINARIES-SHA256SUMS`,
 `cc-switch-BINARIES-SHA256SUMS` and the matching `*-provenance.json`; verify
 them with [`release-pubkey.pem`](release-pubkey.pem). `agent-version-watch`
 updates the public pins only after the promoted public release contains them.

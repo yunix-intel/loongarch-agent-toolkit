@@ -1,8 +1,9 @@
 name: Promote staged binaries
 
-# Manual promotion gate.  The daily mirror only updates the draft
-# agent-binaries-staging release.  A maintainer reviews that draft, then runs
-# this workflow with confirm=PROMOTE and dry_run=false to publish.
+# Manual publication gate.  The private releases are the staging area; the
+# scheduled Check agent binaries workflow only reports on them.  This workflow
+# verifies the current private releases again and, with dry_run=false, writes
+# the public agent-binaries release.
 on:
   workflow_dispatch:
     inputs:
@@ -11,25 +12,15 @@ on:
         required: true
         type: string
       dry_run:
-        description: 'Check everything and print the plan without publishing'
+        description: 'Verify and print the plan without publishing'
         required: true
         type: boolean
         default: true
       allow_unsigned:
-        description: 'Allow promoting a release with unsigned components (legacy only)'
+        description: 'Allow publishing components without signatures (reviewed legacy only)'
         required: true
         type: boolean
         default: false
-      staging_tag:
-        description: 'Draft staging release tag'
-        required: true
-        type: string
-        default: agent-binaries-staging
-      public_tag:
-        description: 'Public release tag'
-        required: true
-        type: string
-        default: agent-binaries
 
 permissions:
   contents: write
@@ -58,113 +49,13 @@ jobs:
             exit 1
           fi
 
-      - name: Download the staging draft
+      - name: Verify and publish
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          STAGING_TAG: ${{ inputs.staging_tag }}
-        run: |
-          set -euo pipefail
-          rm -rf staging
-          mkdir -p staging
-          gh release download "$STAGING_TAG" \
-            --repo "${{ github.repository }}" -D staging
-          ls -l staging
-
-      - name: Verify staging checksums
-        run: |
-          set -euo pipefail
-          ( cd staging && sha256sum -c SHA256SUMS )
-
-      - name: Check signature status
-        env:
-          ALLOW_UNSIGNED: ${{ inputs.allow_unsigned }}
-        run: |
-          set -euo pipefail
-          [ -f staging/SIGNATURE-STATUS ] || {
-            echo "staging/SIGNATURE-STATUS is missing" >&2
-            exit 1
-          }
-          echo "== signature status"
-          cat staging/SIGNATURE-STATUS
-          unsigned=$(grep -c ' unsigned$' staging/SIGNATURE-STATUS || true)
-          if [ "$unsigned" -gt 0 ] && [ "$ALLOW_UNSIGNED" != "true" ]; then
-            echo "unsigned components present; set allow_unsigned=true only for a reviewed legacy release" >&2
-            exit 1
-          fi
-          if [ "$unsigned" -gt 0 ]; then
-            echo "::warning::promoting unsigned legacy components"
-          fi
-
-      - name: Verify signed manifests
-        run: |
-          set -euo pipefail
-          for prefix in codex zcode cc-switch; do
-            if grep -qx "$prefix signed" staging/SIGNATURE-STATUS; then
-              bash scripts/verify-release-signature.sh staging "$prefix-"
-            else
-              echo "skipping signature verification for unsigned $prefix"
-            fi
-          done
-
-      - name: Print the publication plan
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PUBLIC_TAG: ${{ inputs.public_tag }}
-        run: |
-          set -euo pipefail
-          echo "== staging assets"
-          ls -l staging
-          echo "== public-only assets (not removed by this workflow)"
-          gh release view "$PUBLIC_TAG" --repo "${{ github.repository }}" \
-            --json assets --jq '.assets[].name' 2>/dev/null | sort > /tmp/public-assets || true
-          find staging -maxdepth 1 -type f -printf '%f\n' | sort > /tmp/staging-assets
-          comm -23 /tmp/public-assets /tmp/staging-assets || true
-          echo "== signature status"
-          cat staging/SIGNATURE-STATUS
-
-      - name: Stop before publishing (dry run)
-        if: ${{ inputs.dry_run }}
-        run: |
-          echo "dry_run=true; everything verified, nothing published"
-
-      - name: Ensure the public release exists
-        if: ${{ !inputs.dry_run }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PUBLIC_TAG: ${{ inputs.public_tag }}
-        run: |
-          set -euo pipefail
-          if ! gh release view "$PUBLIC_TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release create "$PUBLIC_TAG" \
-              --repo "${{ github.repository }}" \
-              --title "agent-binaries" \
-              --notes "Public mirror. Assets are promoted from the reviewed staging draft."
-          fi
-
-      - name: Upload to the public release
-        if: ${{ !inputs.dry_run }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PUBLIC_TAG: ${{ inputs.public_tag }}
-        run: |
-          set -euo pipefail
-          mapfile -t files < <(find staging -maxdepth 1 -type f ! -name 'SHA256SUMS' -print)
-          [ "${#files[@]}" -gt 0 ] || {
-            echo "no staging assets" >&2
-            exit 1
-          }
-          gh release upload "$PUBLIC_TAG" "${files[@]}" \
-            --repo "${{ github.repository }}" --clobber
-
-      - name: Rebuild the public SHA256SUMS from the final asset list
-        if: ${{ !inputs.dry_run }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PUBLIC_TAG: ${{ inputs.public_tag }}
-        run: |
-          set -euo pipefail
-          bash scripts/refresh-release-checksums.sh \
-            "${{ github.repository }}" "$PUBLIC_TAG"
+          AUTO_ALIGN_TOKEN: ${{ secrets.AUTO_ALIGN_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODE: ${{ inputs.dry_run && 'check' || 'promote' }}
+          ALLOW_UNSIGNED: ${{ inputs.allow_unsigned && '1' || '0' }}
+        run: bash scripts/mirror-agent-assets.sh
 
       - name: Run post-promotion verification and attestation
         if: ${{ !inputs.dry_run }}

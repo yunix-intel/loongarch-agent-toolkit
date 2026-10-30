@@ -1,19 +1,22 @@
-name: Stage agent binaries
+name: Check agent binaries
 
+# Read-only verification of the latest published private releases.  This never
+# writes the public release.  A maintainer reviews the private releases and
+# this report, then runs Promote staged binaries.
 on:
   schedule:
     - cron: '47 4 * * *'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: stage-agent-binaries
+  group: check-agent-binaries
   cancel-in-progress: false
 
 jobs:
-  stage:
+  check:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -21,14 +24,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Stage published private build assets
+      - name: Check the latest private assets
         env:
           AUTO_ALIGN_TOKEN: ${{ secrets.AUTO_ALIGN_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODE: check
         run: bash scripts/mirror-agent-assets.sh
-
-      - name: Point to the manual promotion gate
-        if: success()
-        run: |
-          echo "Assets staged in the draft \`agent-binaries-staging\` release." >> "$GITHUB_STEP_SUMMARY"
-          echo "Review them, then run **Promote staged binaries** with confirm=PROMOTE." >> "$GITHUB_STEP_SUMMARY"

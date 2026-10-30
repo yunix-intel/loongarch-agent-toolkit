@@ -1,27 +1,40 @@
 #!/usr/bin/env bash
-# Stage published private build assets into the draft agent-binaries-staging
-# release.  Nothing is published to the public agent-binaries release here;
-# a maintainer reviews the staging release and runs the manual promotion
-# workflow.
+# MODE=check   verify the latest published private assets and print a report;
+#              never write the public release.
+# MODE=promote verify, prefix per-component signature metadata, upload to the
+#              public agent-binaries release, and rebuild SHA256SUMS.
 #
 # Requires:
 #   AUTO_ALIGN_TOKEN: read access to loongarch-agent-builds and cc-switch-loongarch
-#   GITHUB_TOKEN:     write access to this public repository
+#   GITHUB_TOKEN:     write access to this public repository (promote only)
+#
+# The private releases are the staging area.  A maintainer reviews them and
+# the check report, then runs the manual promotion workflow.
 set -euo pipefail
 
 PRIVATE_TOKEN=${AUTO_ALIGN_TOKEN:?AUTO_ALIGN_TOKEN is required}
-PUBLIC_TOKEN=${GITHUB_TOKEN:?GITHUB_TOKEN is required}
+MODE=${MODE:-check}
+case "$MODE" in
+    check|promote) ;;
+    *) echo "MODE must be check or promote (got $MODE)" >&2; exit 2 ;;
+esac
+PUBLIC_TOKEN=''
+if [ "$MODE" = promote ]; then
+    PUBLIC_TOKEN=${GITHUB_TOKEN:?GITHUB_TOKEN is required for promote}
+fi
+ALLOW_UNSIGNED=${ALLOW_UNSIGNED:-0}
+
 BUILDS_REPO=yunix-intel/loongarch-agent-builds
 CC_REPO=yunix-intel/cc-switch-loongarch
 MIRROR_REPO=yunix-intel/loongarch-agent-toolkit
 MIRROR_TAG=agent-binaries
-STAGING_TAG=agent-binaries-staging
 MIRROR_BASE="https://github.com/$MIRROR_REPO/releases/download/$MIRROR_TAG"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/mirror-agent-assets.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT HUP INT TERM
 ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 
 warn() { printf 'warning: %s\n' "$*" >&2; }
+die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 private_api() {
     GH_TOKEN="$PRIVATE_TOKEN" gh api "$@"
@@ -42,8 +55,7 @@ download_release() {
         --repo "$repo" "$@" -D "$dir" --clobber
 }
 
-# Per-artifact SBOMs and signatures are produced by the private build
-# workflows.  A missing asset is expected on older releases; an asset that is
+# A missing optional asset is expected on older releases; an asset that is
 # listed but cannot be downloaded is a hard failure.
 optional_release_asset() {
     local repo=$1 tag=$2 dir=$3 name=$4 assets
@@ -52,8 +64,7 @@ optional_release_asset() {
     if ! GH_TOKEN="$PRIVATE_TOKEN" gh release view "$tag" --repo "$repo" \
         --json assets --jq '.assets[].name' > "$assets"; then
         rm -f "$assets"
-        echo "cannot list assets of $repo@$tag" >&2
-        return 1
+        die "cannot list assets of $repo@$tag"
     fi
     if ! grep -Fxq "$name" "$assets"; then
         rm -f "$assets"
@@ -63,23 +74,18 @@ optional_release_asset() {
     rm -f "$assets"
     if ! GH_TOKEN="$PRIVATE_TOKEN" gh release download "$tag" \
         --repo "$repo" --pattern "$name" -D "$dir" --clobber; then
-        echo "failed to download existing asset $name from $repo@$tag" >&2
-        return 1
+        die "failed to download existing asset $name from $repo@$tag"
     fi
 }
 
 verify_checksums() {
     local dir=$1 repo=$2 tag=$3 names bad
-    [ -f "$dir/SHA256SUMS" ] || {
-        echo "missing SHA256SUMS in $dir" >&2
-        return 1
-    }
+    [ -f "$dir/SHA256SUMS" ] || die "missing SHA256SUMS in $dir"
     names="$TMP/release-assets.$$.txt"
     if ! GH_TOKEN="$PRIVATE_TOKEN" gh release view "$tag" --repo "$repo" \
         --json assets --jq '.assets[].name' > "$names"; then
-        echo "cannot list assets of $repo@$tag" >&2
         rm -f "$names"
-        return 1
+        die "cannot list assets of $repo@$tag"
     fi
     bad=0
     while read -r _ name; do
@@ -91,36 +97,29 @@ verify_checksums() {
         fi
     done < "$dir/SHA256SUMS"
     rm -f "$names"
-    [ "$bad" -eq 0 ] || return 1
+    [ "$bad" -eq 0 ] || die "checksum manifest references missing assets"
     ( cd "$dir" && sha256sum -c --ignore-missing SHA256SUMS )
 }
 
-ensure_staging_release() {
+ensure_public_release() {
     local draft
-    if GH_TOKEN="$PUBLIC_TOKEN" gh release view "$STAGING_TAG" \
+    if GH_TOKEN="$PUBLIC_TOKEN" gh release view "$MIRROR_TAG" \
         --repo "$MIRROR_REPO" >/dev/null 2>&1; then
-        draft=$(GH_TOKEN="$PUBLIC_TOKEN" gh release view "$STAGING_TAG" \
+        draft=$(GH_TOKEN="$PUBLIC_TOKEN" gh release view "$MIRROR_TAG" \
             --repo "$MIRROR_REPO" --json isDraft --jq '.isDraft')
-        [ "$draft" = "true" ] || {
-            echo "ERROR: $STAGING_TAG exists but is not a draft" >&2
-            exit 1
-        }
+        [ "$draft" = "false" ] || die "$MIRROR_TAG is a draft; publish it before promoting"
     else
-        GH_TOKEN="$PUBLIC_TOKEN" gh release create "$STAGING_TAG" \
-            --repo "$MIRROR_REPO" --draft \
-            --title "agent-binaries staging" \
-            --notes "Draft staging area. Review assets, SHA256SUMS and signatures, then run Promote staged binaries."
+        GH_TOKEN="$PUBLIC_TOKEN" gh release create "$MIRROR_TAG" \
+            --repo "$MIRROR_REPO" --title "agent-binaries" \
+            --notes "Public mirror. Assets are published by the manual promotion workflow."
     fi
 }
 
-upload_staging() {
+upload_public() {
     local dir=$1
     mapfile -t files < <(find "$dir" -maxdepth 1 -type f ! -name 'SHA256SUMS*' -print)
-    [ "${#files[@]}" -gt 0 ] || {
-        echo "no staged assets in $dir" >&2
-        return 1
-    }
-    GH_TOKEN="$PUBLIC_TOKEN" gh release upload "$STAGING_TAG" \
+    [ "${#files[@]}" -gt 0 ] || die "no assets in $dir"
+    GH_TOKEN="$PUBLIC_TOKEN" gh release upload "$MIRROR_TAG" \
         "${files[@]}" --repo "$MIRROR_REPO" --clobber
 }
 
@@ -145,15 +144,25 @@ signature_status() {
     fi
 }
 
+verify_signatures() {
+    local dir=$1 label=$2
+    if [ -f "$dir/BINARIES-SHA256SUMS.sig" ] || [ -f "$dir/provenance.json.sig" ]; then
+        bash "$ROOT/scripts/verify-release-signature.sh" "$dir"
+    else
+        warn "no signed manifest for $label (older release)"
+    fi
+}
+
 CODEX_TAG=$(latest_tag "$BUILDS_REPO" 'codex-rust-v')
 ZCODE_TAG=$(latest_tag "$BUILDS_REPO" 'zcode-v')
 CC_TAG=$(latest_tag "$CC_REPO" 'loongarch-v')
-[ -n "$CODEX_TAG" ] || { echo "no published Codex build" >&2; exit 1; }
-[ -n "$ZCODE_TAG" ] || { echo "no published ZCode build" >&2; exit 1; }
-[ -n "$CC_TAG" ] || { echo "no published cc-switch build" >&2; exit 1; }
+[ -n "$CODEX_TAG" ] || die "no published Codex build"
+[ -n "$ZCODE_TAG" ] || die "no published ZCode build"
+[ -n "$CC_TAG" ] || die "no published cc-switch build"
 
-echo "Codex:    $CODEX_TAG"
-echo "ZCode:    $ZCODE_TAG"
+echo "mode:      $MODE"
+echo "Codex:     $CODEX_TAG"
+echo "ZCode:     $ZCODE_TAG"
 echo "cc-switch: $CC_TAG"
 
 download_release "$BUILDS_REPO" "$CODEX_TAG" "$TMP/codex" \
@@ -174,14 +183,6 @@ for name in BINARIES-SHA256SUMS BINARIES-SHA256SUMS.sig provenance.json provenan
     optional_release_asset "$CC_REPO" "$CC_TAG" "$TMP/cc-switch" "$name"
 done
 
-verify_signatures() {
-    local dir=$1 label=$2
-    if [ -f "$dir/BINARIES-SHA256SUMS.sig" ] || [ -f "$dir/provenance.json.sig" ]; then
-        bash "$ROOT/scripts/verify-release-signature.sh" "$dir"
-    else
-        warn "no signed manifest for $label (older release)"
-    fi
-}
 verify_signatures "$TMP/codex" "$CODEX_TAG"
 verify_signatures "$TMP/zcode" "$ZCODE_TAG"
 verify_signatures "$TMP/cc-switch" "$CC_TAG"
@@ -197,29 +198,52 @@ mkdir -p "$TMP/meta"
     signature_status "$TMP/cc-switch" cc-switch
 } > "$TMP/meta/SIGNATURE-STATUS"
 
-# The component summary is generated from the exact staged bytes.  The
-# per-artifact dependency SBOMs are produced by the private build workflows
-# and copied verbatim; this script must not regenerate them from upstream.
-command -v python3 >/dev/null 2>&1 || {
-    echo "python3 is required to generate SBOM.spdx.json" >&2
-    exit 1
-}
+command -v python3 >/dev/null 2>&1 || die "python3 is required to generate SBOM.spdx.json"
 python3 -I "$ROOT/scripts/generate-mirror-sbom.py" \
     "$TMP/meta/SBOM.spdx.json" "$MIRROR_BASE" \
     "$TMP/codex" "$TMP/zcode" "$TMP/cc-switch"
+
+unsigned=$(grep -c ' unsigned$' "$TMP/meta/SIGNATURE-STATUS" || true)
+if [ "$unsigned" -gt 0 ] && [ "$ALLOW_UNSIGNED" != "1" ]; then
+    if [ "$MODE" = promote ]; then
+        die "unsigned components present; set ALLOW_UNSIGNED=1 only for a reviewed legacy release"
+    fi
+    warn "unsigned components present; promote will require ALLOW_UNSIGNED=1"
+fi
+
+if [ "$MODE" = check ]; then
+    {
+        echo "### Private asset check"
+        echo
+        echo "- Codex: \`$CODEX_TAG\`"
+        echo "- ZCode: \`$ZCODE_TAG\`"
+        echo "- cc-switch: \`$CC_TAG\`"
+        echo
+        echo "**Signature status**"
+        sed 's/^/- /' "$TMP/meta/SIGNATURE-STATUS"
+        echo
+        echo "**Component summary:** \`$TMP/meta/SBOM.spdx.json\` ($(python3 -I -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["packages"]))' "$TMP/meta/SBOM.spdx.json") packages)"
+        echo
+        echo "No public release was modified. Review the private releases, then run **Promote staged binaries**."
+    } > "$TMP/report.md"
+    cat "$TMP/report.md"
+    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+        cat "$TMP/report.md" >> "$GITHUB_STEP_SUMMARY"
+    fi
+    exit 0
+fi
 
 prefix_metadata "$TMP/codex" codex
 prefix_metadata "$TMP/zcode" zcode
 prefix_metadata "$TMP/cc-switch" cc-switch
 
-ensure_staging_release
-upload_staging "$TMP/codex"
-upload_staging "$TMP/zcode"
-upload_staging "$TMP/cc-switch"
-upload_staging "$TMP/meta"
+ensure_public_release
+upload_public "$TMP/codex"
+upload_public "$TMP/zcode"
+upload_public "$TMP/cc-switch"
+upload_public "$TMP/meta"
 
 GH_TOKEN="$PUBLIC_TOKEN" bash "$ROOT/scripts/refresh-release-checksums.sh" \
-    "$MIRROR_REPO" "$STAGING_TAG"
+    "$MIRROR_REPO" "$MIRROR_TAG"
 
-echo "staged in $MIRROR_REPO@$STAGING_TAG"
-echo "review the draft release, then run the 'Promote staged binaries' workflow"
+echo "promoted to $MIRROR_REPO@$MIRROR_TAG"

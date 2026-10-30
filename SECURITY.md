@@ -64,24 +64,25 @@ the patched/overridden source tree exists, and are copied here verbatim; the
 public `sbom-generate` workflow only verifies them and the summary checksums.
 The promotion chain is:
 
-1. **Stage agent binaries** (daily/manual) copies published private assets into
-   the draft `agent-binaries-staging` release, verifies the private
-   `SHA256SUMS`, and writes `SIGNATURE-STATUS`; it never writes the public
-   release;
-2. a maintainer reviews the staging draft and runs **Promote staged binaries**
-   with `confirm=PROMOTE` and `dry_run=false`. Promotion verifies the staging
-   `SHA256SUMS` and each signed component, then uploads to `agent-binaries`
-   and rebuilds the public `SHA256SUMS` from the final asset list. Unsigned
-   legacy components require `allow_unsigned=true` and are reported as such;
-3. successful promotion runs `sbom-generate.yml` in verify-only mode and
+1. **Check agent binaries** (daily/manual) verifies the latest published
+   private assets, their private `SHA256SUMS`, and their signature status, and
+   writes a report; it never writes the public release. Unreviewed assets stay
+   in the private releases;
+2. a maintainer reviews the private releases and runs **Promote staged
+   binaries** with `confirm=PROMOTE` and `dry_run=false`. Promotion
+   re-downloads and verifies the private assets, requires signatures unless
+   `allow_unsigned=true` is explicitly set for a reviewed legacy release, then
+   uploads to `agent-binaries` and rebuilds the public `SHA256SUMS` from the
+   final asset list;
+3. successful promotion dispatches `sbom-generate.yml` in verify-only mode and
    `mirror-attest.yml`, which creates GitHub artifact attestations for the
    public assets.
 
-The private release jobs create **draft** releases; the staging workflow only
+The private release jobs create **draft** releases; the check workflow only
 selects `draft == false`, so publishing the private draft is the first human
 gate. The second gate is the manual promotion workflow. The `mirror-attest`
-attestation proves that the mirror workflow handled the exact asset digest; it
-is **mirror integrity**, not proof that the binary was built from the tagged
+attestation proves that the promotion workflow handled the exact asset digest;
+it is **mirror integrity**, not proof that the binary was built from the tagged
 source. Signed release manifests carry the build-origin claim.
 
 Verify with `gh attestation verify <asset> --repo
