@@ -185,7 +185,11 @@ if [ -n "$NODE_SHA256" ]; then
 elif curl -fsSL --retry 2 -o "$TMP/$NODE_TARBALL.sha256" "$NODE_URL.sha256"; then
     ( cd "$TMP" && sha256sum -c "$NODE_TARBALL.sha256" ) || die "Node checksum mismatch"
 else
-    warn "no pinned NODE_SHA256 and no .sha256 asset; skipping checksum verification"
+    if [ "${ALLOW_UNVERIFIED_NODE:-0}" = "1" ]; then
+        warn "no pinned NODE_SHA256 and no .sha256 asset; continuing because ALLOW_UNVERIFIED_NODE=1"
+    else
+        die "no pinned NODE_SHA256 and no .sha256 asset; refusing to install unverified Node (set ALLOW_UNVERIFIED_NODE=1 to override)"
+    fi
 fi
 
 mkdir -p "$TMP/node"
@@ -198,19 +202,30 @@ if tar -tvJf "$TMP/$NODE_TARBALL" | grep -E '^[lh]' \
 fi
 tar -xJf "$TMP/$NODE_TARBALL" -C "$TMP/node" --strip-components=1
 
+[ -x "$TMP/node/bin/node" ] || die "Node install failed: $TMP/node/bin/node missing"
+NODE_ABI=$(abi_name "$(elf_flags "$TMP/node/bin/node")")
+NODE_VER=$("$TMP/node/bin/node" -v)
+log "downloaded Node $NODE_VER ($NODE_ABI)"
+[ "$NODE_ABI" = "ABI2.0" ] || die "downloaded Node is $NODE_ABI, expected ABI2.0"
+
 if [ -e "$NODE_PREFIX" ]; then
     BACKUP="$NODE_PREFIX.bak.$(date +%Y%m%d-%H%M%S)"
     log "moving existing $NODE_PREFIX to $BACKUP"
     mv "$NODE_PREFIX" "$BACKUP"
 fi
 mkdir -p "$(dirname "$NODE_PREFIX")"
-mv "$TMP/node" "$NODE_PREFIX"
+if ! mv "$TMP/node" "$NODE_PREFIX"; then
+    if [ -n "${BACKUP:-}" ]; then
+        rm -rf "$NODE_PREFIX"
+        mv "$BACKUP" "$NODE_PREFIX"
+        die "failed to install Node; restored $BACKUP"
+    fi
+    die "failed to install Node at $NODE_PREFIX"
+fi
 
 [ -x "$NODE_PREFIX/bin/node" ] || die "Node install failed: $NODE_PREFIX/bin/node missing"
-NODE_ABI=$(abi_name "$(elf_flags "$NODE_PREFIX/bin/node")")
 NODE_VER=$("$NODE_PREFIX/bin/node" -v)
 log "installed Node $NODE_VER at $NODE_PREFIX ($NODE_ABI)"
-[ "$NODE_ABI" = "ABI2.0" ] || die "downloaded Node is $NODE_ABI, expected ABI2.0"
 
 NPM="$NODE_PREFIX/bin/npm"
 [ -x "$NPM" ] || die "npm missing in $NODE_PREFIX"

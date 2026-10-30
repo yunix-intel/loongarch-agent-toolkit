@@ -9,7 +9,7 @@ install or wrap. The tools below remain under their own licenses:
 | cc-switch | https://github.com/farion1231/cc-switch | Reference for the 3P gateway layout. The private `yunix-intel/cc-switch-loongarch` build source is mirrored as a public deb in this repository's `agent-binaries` release; not vendored here. |
 | ccswitch-lite | this repository | MIT. Implemented from scratch with the Go standard library. |
 | Tauri | https://tauri.app/ | MIT / Apache-2.0. Pulled from crates.io at build time; see `zcode-tauri/src-tauri/Cargo.lock`. |
-| ZCode | https://z.ai/ | Proprietary. Not included; the shell expects an existing `zcode` binary. |
+| ZCode | https://github.com/zai-org/ZCode | Apache-2.0 for first-party code. The loong64 CLI/desktop builds are mirrored in this repository's `agent-binaries` release; bundled third-party components remain under their own terms in `ZCode-NOTICE.md`. |
 | Node.js (loong64 builds) | https://github.com/loong64/node | MIT-style Node.js license. Downloaded by the installer, not committed. |
 | @openai/codex | npm `@openai/codex` | Apache-2.0 (upstream). Installed from the Loongnix registry, not committed. |
 | opencode-ai | npm `opencode-ai` | MIT (upstream). Installed from the Loongnix registry, not committed. |

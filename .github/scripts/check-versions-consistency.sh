@@ -46,9 +46,12 @@ while IFS= read -r line; do
     MV["$key"]=${line#*=}
 done < "$MANIFEST"
 
-MANIFEST_KEYS=(NODE_VERSION NODE_SHA256 CODEX_CHANNEL CODEX_VERSION CODEX_SOURCE_VERSION
+MANIFEST_KEYS=(NODE_VERSION NODE_SHA256 CODEX_CHANNEL CODEX_VERSION
+    CODEX_NPM_INTEGRITY CODEX_SOURCE_VERSION
     CODEX_SOURCE_URL CODEX_SOURCE_SHA256 CODEX_LINK_DEFAULT OPENCODE_VERSION
-    DSH_VERSION CLAUDE_CODE_VERSION CLAUDE_CODE_NPM_REGISTRY
+    OPENCODE_NPM_INTEGRITY DSH_VERSION DSH_NPM_INTEGRITY CLAUDE_CODE_VERSION
+    CLAUDE_CODE_NPM_INTEGRITY
+    CLAUDE_CODE_NPM_REGISTRY
     CLAUDE_CODE_PREFIX CLAUDE_CODE_NODE CLAUDE_CODE_LINK_DEFAULT
     ZCODE_TAG ZCODE_VERSION ZCODE_CHANNEL
     ZCODE_CLI_URL ZCODE_CLI_SHA256 ZCODE_DESKTOP_DEB_URL
@@ -116,6 +119,14 @@ esac
 [ "${#node_sha}" -eq 64 ] || fail_msg "NODE_SHA256 must be 64 hex characters"
 [ "$(manifest_value ZCODE_VERSION)" = "$(manifest_value ZCODE_TAG)" ] \
     || fail_msg "ZCODE_VERSION must equal ZCODE_TAG"
+
+# The version watch updates these together with their versions.  A missing or
+# malformed integrity would make the installer reject every future tarball.
+for key in CODEX_NPM_INTEGRITY OPENCODE_NPM_INTEGRITY DSH_NPM_INTEGRITY CLAUDE_CODE_NPM_INTEGRITY; do
+    value=$(manifest_value "$key")
+    printf '%s' "$value" | grep -Eq '^sha512-[A-Za-z0-9+/]+={0,2}$' \
+        || fail_msg "$key must be a sha512 integrity string"
+done
 
 case "$(manifest_value ZCODE_TAG)" in
     v[0-9]*.[0-9]*.[0-9]*) ;;

@@ -9,12 +9,17 @@ Public installers download the reviewed binaries from this repository's
 [`agent-binaries`](https://github.com/yunix-intel/loongarch-agent-toolkit/releases/tag/agent-binaries)
 release. The build source repositories (`loongarch-agent-builds` and
 `cc-switch-loongarch`) are private; their reviewed assets are mirrored here.
-The release includes `SHA256SUMS`, `SBOM.spdx.json` (component summary),
-per-artifact dependency SBOMs `SBOM-codex.spdx.json`,
-`SBOM-zcode.spdx.json`, `SBOM-cc-switch.spdx.json`, license/NOTICE files and
-a GitHub build-provenance attestation. `mirror-upload.yml` mirrors published
-private assets daily, then chains SBOM generation and automatic attestation;
-`agent-version-watch` updates the public pins after the mirror has them.
+The release includes `SHA256SUMS`, `SBOM.spdx.json` (component summary
+generated from the mirrored bytes), per-artifact dependency SBOMs
+`SBOM-codex.spdx.json`, `SBOM-zcode.spdx.json`, `SBOM-cc-switch.spdx.json`,
+license/NOTICE files and a GitHub artifact attestation for the mirrored bytes.
+The per-artifact SBOMs are generated inside the private build workflows, where
+the patched/overridden source tree exists; this public repository copies and
+verifies them. `mirror-upload.yml` mirrors published private assets daily,
+refreshes the public `SHA256SUMS`, and chains SBOM verification and automatic
+attestation; `agent-version-watch` updates the public pins after the mirror has
+them. Private releases stay **draft** until a human publishes them, and
+`mirror-upload` only selects published (`draft == false`) releases.
 `install/versions.env` points only at this public mirror, and no token is
 needed to install. When a new build is added, mirror the asset to
 `agent-binaries` first: the version watch refuses to move a public pin to a
@@ -36,8 +41,9 @@ differ. Check the invariant with
 `scripts/check-zcode-tauri-sync.sh <private-builds-checkout>`.
 
 The official [`farion1231/cc-switch`](https://github.com/farion1231/cc-switch)
-Tauri app **has been built for loongarch64**: upstream v4.0.19 compiles with
-Rust 1.97.1 and its full UI has been verified under Xvfb. The build source is
+Tauri app **has been built for loongarch64**: upstream v4.0.21 builds with
+Rust 1.96/1.97 after the reviewed zip 9 compatibility patch, and its full UI
+has been verified under Xvfb. The build source is
 the private `yunix-intel/cc-switch-loongarch` repository; the reviewed deb is
 mirrored in this toolkit's public
 [`agent-binaries`](https://github.com/yunix-intel/loongarch-agent-toolkit/releases/tag/agent-binaries)
@@ -89,7 +95,9 @@ cd ccswitch-lite
 CGO_ENABLED=0 GOOS=linux GOARCH=loong64 \
   go build -trimpath -ldflags "-s -w" -o ccswitch-lite .
 ./ccswitch-lite add --name gw --base-url https://api.example.com \
-  --api-key sk-xxxx --format anthropic
+  --format anthropic
+# 交互式运行会提示输入 API Key；不要把 key 放在 argv 里，
+# 否则它会出现在 /proc/<pid>/cmdline 和 shell 历史中。
 ./ccswitch-lite use gw
 ./ccswitch-lite list
 ./ccswitch-lite restore
@@ -355,8 +363,9 @@ with Anthropic.
 - `ccswitch-lite` keeps API keys in plaintext (0600 file), not a keyring.
 - Custom headers are written only for Codex; Desktop/Claude Code have no
   corresponding config slot.
-- The Web UI has no user authentication; it binds to loopback and now rejects
-  non-loopback Host headers, cross-site Origins and non-JSON writes.
+- The Web UI uses a per-process capability token stored in a 0600 file; it
+  binds to loopback and rejects non-loopback Host headers, cross-site Origins
+  and non-JSON writes.
 - The official cc-switch loong64 port is built from upstream source and ships a
   `.deb`; see
   [`docs/cc-switch-loongarch.md`](docs/cc-switch-loongarch.md). `ccswitch-lite`

@@ -30,11 +30,11 @@ CGO_ENABLED=0 GOOS=linux GOARCH=loong64 \
 ## 快速开始
 
 ```bash
-# 添加一套私有网关（Anthropic 兼容）
+# 添加一套私有网关（Anthropic 兼容）。交互式运行会提示输入 API Key；
+# 不要把 key 放在命令行上（会进入 argv 和 shell 历史）。
 ccswitch add \
   --name gw \
   --base-url https://api.example.com \
-  --api-key sk-xxxx \
   --format anthropic \
   --default-model claude-sonnet-4-6 \
   --sonnet claude-sonnet-4-6 \

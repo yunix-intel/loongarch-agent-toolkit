@@ -2,7 +2,7 @@ name: Attest mirror assets
 
 on:
   workflow_run:
-    workflows: ["Generate dependency SBOMs", "Mirror agent binaries"]
+    workflows: ["Mirror agent binaries"]
     types: [completed]
   schedule:
     - cron: '17 6 * * *'
@@ -15,7 +15,7 @@ permissions:
 
 concurrency:
   group: mirror-attest
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   attest:

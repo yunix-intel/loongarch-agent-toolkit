@@ -9,6 +9,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
@@ -62,7 +63,16 @@ type Applied struct {
 	Provider     string `json:"provider,omitempty"`
 	CodexSlug    string `json:"codexSlug,omitempty"`
 	WroteAuthKey bool   `json:"wroteAuthKey,omitempty"`
-	At           string `json:"at,omitempty"`
+	// AuthKeySHA256 identifies the exact key this tool last wrote to
+	// Codex auth.json. It is a hash so the store does not keep a second copy.
+	AuthKeySHA256 string `json:"authKeySha256,omitempty"`
+	// CodexAuthBackup records the value that existed before the first write,
+	// so restore can put the user's own key back instead of deleting it.
+	CodexAuthBackup    string            `json:"codexAuthBackup,omitempty"`
+	CodexAuthHadKey    bool              `json:"codexAuthHadKey,omitempty"`
+	CodexAuthBackupSet bool              `json:"codexAuthBackupSet,omitempty"`
+	ClaudeEnvBackup    map[string]string `json:"claudeEnvBackup,omitempty"`
+	At                 string            `json:"at,omitempty"`
 }
 
 type Store struct {
@@ -218,10 +228,25 @@ func backupFile(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(dst, data, st.Mode().Perm()); err != nil {
+	// Backups may contain API keys even when the live file was world-readable.
+	if err := atomicWrite(dst, data, 0600); err != nil {
 		return "", err
 	}
+	pruneBackups(path, 10)
 	return dst, nil
+}
+
+// Keep a bounded number of timestamped backups; old copies may still contain
+// credentials the user has since rotated.
+func pruneBackups(path string, keep int) {
+	matches, err := filepath.Glob(path + ".bak.*")
+	if err != nil || len(matches) <= keep {
+		return
+	}
+	sort.Strings(matches)
+	for _, old := range matches[:len(matches)-keep] {
+		_ = os.Remove(old)
+	}
 }
 
 func atomicWrite(path string, data []byte, mode os.FileMode) error {
@@ -731,6 +756,11 @@ func maskKey(k string) string {
 	return k[:4] + "…" + k[len(k)-4:]
 }
 
+func sha256Hex(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
+}
+
 func normalizeProvider(p *Provider) error {
 	p.Name = strings.TrimSpace(p.Name)
 	p.BaseURL = strings.TrimSpace(p.BaseURL)
@@ -916,10 +946,22 @@ func applyProvider(p *Paths, pr *Provider, st *Store) (*report, error) {
 	if pr.Models.Fable != "" {
 		desired["ANTHROPIC_DEFAULT_FABLE_MODEL"] = pr.Models.Fable
 	}
+	// Capture the pre-tool values once. A later provider switch must not
+	// overwrite this with the values this tool itself wrote last time.
+	var prevEnv map[string]string
+	if st.Applied.ClaudeEnvBackup == nil {
+		prevEnv = map[string]string{}
+	}
 	bak, err = mergeJSON(p.ClaudeSettings, func(obj map[string]any) error {
 		env, _ := obj["env"].(map[string]any)
 		if env == nil {
 			env = map[string]any{}
+		}
+		if prevEnv != nil {
+			for _, k := range owned {
+				v, _ := env[k].(string)
+				prevEnv[k] = v
+			}
 		}
 		for _, k := range owned {
 			delete(env, k)
@@ -932,6 +974,10 @@ func applyProvider(p *Paths, pr *Provider, st *Store) (*report, error) {
 	})
 	if err != nil {
 		return r, err
+	}
+	claudeEnvBackup := st.Applied.ClaudeEnvBackup
+	if claudeEnvBackup == nil && len(prevEnv) > 0 {
+		claudeEnvBackup = prevEnv
 	}
 	r.add("claude-code     %s  env 已写入 (%s)%s", p.ClaudeSettings, maskKey(pr.APIKey), bakNote(bak))
 
@@ -964,6 +1010,10 @@ func applyProvider(p *Paths, pr *Provider, st *Store) (*report, error) {
 
 	// --- Codex auth.json (best effort, never overwrite a user's own key)
 	wroteAuth := false
+	authBackup := st.Applied.CodexAuthBackup
+	authHad := st.Applied.CodexAuthHadKey
+	authBackupSet := st.Applied.CodexAuthBackupSet
+	authHash := ""
 	if pr.APIKey != "" {
 		authObj, _, aerr := readJSONObject(p.CodexAuth)
 		if aerr != nil {
@@ -971,11 +1021,15 @@ func applyProvider(p *Paths, pr *Provider, st *Store) (*report, error) {
 		} else {
 			existing, has := authObj["OPENAI_API_KEY"]
 			existingStr, _ := existing.(string)
-			// We only own the key if a previous apply wrote it and it still
-			// matches the provider we applied then.
+			// Compare against the exact key this tool last wrote, not the
+			// provider's current key: the user may have rotated the provider
+			// entry after the last apply.
 			owned := false
 			if st.Applied.WroteAuthKey && existingStr != "" {
-				if prev := st.find(st.Applied.Provider); prev != nil && prev.APIKey == existingStr {
+				if st.Applied.AuthKeySHA256 != "" {
+					owned = sha256Hex(existingStr) == st.Applied.AuthKeySHA256
+				} else if prev := st.find(st.Applied.Provider); prev != nil && prev.APIKey == existingStr {
+					// Migration for stores written before AuthKeySHA256 existed.
 					owned = true
 				}
 			}
@@ -983,9 +1037,15 @@ func applyProvider(p *Paths, pr *Provider, st *Store) (*report, error) {
 			case has && strings.TrimSpace(existingStr) != "" && !owned:
 				r.add("codex           auth.json 已有 OPENAI_API_KEY，保留未覆盖")
 			case has && existingStr == pr.APIKey:
+				if !authBackupSet {
+					authBackup, authHad, authBackupSet = existingStr, has, true
+				}
 				wroteAuth = true
 				r.add("codex           auth.json 的 OPENAI_API_KEY 由本工具写入，保持不变")
 			default:
+				if !authBackupSet {
+					authBackup, authHad, authBackupSet = existingStr, has, true
+				}
 				authObj["OPENAI_API_KEY"] = pr.APIKey
 				abak, aerr := writeValidated(p.CodexAuth, marshalJSON(authObj), 0600, validateJSONBytes)
 				if aerr != nil {
@@ -996,8 +1056,25 @@ func applyProvider(p *Paths, pr *Provider, st *Store) (*report, error) {
 			}
 		}
 	}
+	if wroteAuth {
+		authHash = sha256Hex(pr.APIKey)
+	} else {
+		// The current provider did not write auth.json; a restore must not
+		// touch a key that belongs to someone else.
+		authBackup, authHad, authBackupSet = "", false, false
+	}
 
-	st.Applied = Applied{Provider: pr.Name, CodexSlug: slug, WroteAuthKey: wroteAuth, At: time.Now().Format(time.RFC3339)}
+	st.Applied = Applied{
+		Provider:           pr.Name,
+		CodexSlug:          slug,
+		WroteAuthKey:       wroteAuth,
+		AuthKeySHA256:      authHash,
+		CodexAuthBackup:    authBackup,
+		CodexAuthHadKey:    authHad,
+		CodexAuthBackupSet: authBackupSet,
+		ClaudeEnvBackup:    claudeEnvBackup,
+		At:                 time.Now().Format(time.RFC3339),
+	}
 	return r, nil
 }
 
@@ -1078,8 +1155,19 @@ func restoreAll(p *Paths, st *Store) (*report, error) {
 		bak, err := mergeJSON(p.ClaudeSettings, func(obj map[string]any) error {
 			env, _ := obj["env"].(map[string]any)
 			if env != nil {
-				for _, k := range owned {
-					delete(env, k)
+				if st.Applied.ClaudeEnvBackup != nil {
+					for k, v := range st.Applied.ClaudeEnvBackup {
+						if v == "" {
+							delete(env, k)
+						} else {
+							env[k] = v
+						}
+					}
+				} else {
+					// Legacy store: no pre-apply values were recorded.
+					for _, k := range owned {
+						delete(env, k)
+					}
 				}
 				if len(env) == 0 {
 					delete(obj, "env")
@@ -1121,10 +1209,34 @@ func restoreAll(p *Paths, st *Store) (*report, error) {
 		}
 	}
 
-	// Codex auth.json: only remove the key if we wrote it.
+	// Codex auth.json: only touch the key if it is still the one we wrote.
 	if st.Applied.WroteAuthKey {
 		if obj, _, err := readJSONObject(p.CodexAuth); err == nil {
-			if _, has := obj["OPENAI_API_KEY"]; has {
+			current, has := obj["OPENAI_API_KEY"]
+			currentStr, _ := current.(string)
+			owned := st.Applied.AuthKeySHA256 == ""
+			if !owned {
+				owned = sha256Hex(currentStr) == st.Applied.AuthKeySHA256
+			}
+			switch {
+			case !owned:
+				r.add("codex           auth.json 的 OPENAI_API_KEY 已被改动，保留未删除")
+			case st.Applied.CodexAuthBackupSet:
+				if st.Applied.CodexAuthBackup != "" {
+					obj["OPENAI_API_KEY"] = st.Applied.CodexAuthBackup
+				} else {
+					delete(obj, "OPENAI_API_KEY")
+				}
+				bak, werr := writeValidated(p.CodexAuth, marshalJSON(obj), 0600, validateJSONBytes)
+				if werr != nil {
+					return r, werr
+				}
+				if st.Applied.CodexAuthBackup != "" {
+					r.add("codex           %s  已恢复 apply 前的 OPENAI_API_KEY%s", p.CodexAuth, bakNote(bak))
+				} else {
+					r.add("codex           %s  已移除本工具写入的 OPENAI_API_KEY%s", p.CodexAuth, bakNote(bak))
+				}
+			case has:
 				delete(obj, "OPENAI_API_KEY")
 				bak, werr := writeValidated(p.CodexAuth, marshalJSON(obj), 0600, validateJSONBytes)
 				if werr != nil {
@@ -1607,7 +1719,7 @@ func cmdWeb(p *Paths, args []string) error {
 	if err != nil {
 		return fmt.Errorf("监听 %s 失败: %w", *addr, err)
 	}
-	fmt.Printf("ccswitch-lite web UI: http://%s/?token=%s\n", *addr, token)
+	fmt.Printf("ccswitch-lite web UI: http://%s/?token=%s\n", *addr, url.QueryEscape(token))
 	fmt.Println("本机 API 需要该 token；token 文件权限为 0600。按 Ctrl-C 退出。")
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt, syscall.SIGTERM)

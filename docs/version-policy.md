@@ -50,7 +50,7 @@ fine-grained token，必须把 `cc-switch-loongarch` 也加入 Repository access
 否则状态为 `private-repo-unreadable`，issue 会提示补授权。完全没有配置
 token 时，ZCode/cc-switch 也显示 `private-repo-unreadable`，不会伪装成
 `up-to-date`。watch 只会把 URL 写向公共 `agent-binaries` 中已存在的资产；
-镜像缺失时保留旧 pin 并报告 `mirror-missing`，不会生成 404 的公开 URL。
+镜像缺失时保留旧 pin 并打印 `WARNING: ... is not mirrored`，不会生成 404 的公开 URL。
 
 **版本号、URL 和 SHA-256 永远作为一个整体更新。** 只看上游版本号就改
 `ZCODE_TAG`/`CC_SWITCH_VERSION`、却保留旧资产的 URL/SHA，会让安装器把旧
@@ -152,8 +152,8 @@ CI 会自动启动，不再需要每次批准。token 只通过环境变量传�
 - `loongarch-agent-builds` 和 `cc-switch-loongarch` 现在是 **private** 构建源，
   自托管 runner 只挂在这两个私有仓；公开 fork 无法命中它们。
 - 审核后的二进制镜像到本仓库公开的 `agent-binaries` release；`versions.env`
-  只写公共 URL。`check-agent-versions.sh` 在镜像缺失时保留旧 pin 并报告
-  `mirror-missing`，不会写 404 URL。
+  只写公共 URL。`check-agent-versions.sh` 在镜像缺失时保留旧 pin 并打印
+  `WARNING: ... is not mirrored`，不会写 404 URL。
 - `dependency-refresh.yml`（手动）更新 `zcode-tauri/Cargo.lock` 并开 PR；
   因为仓库策略禁止 `GITHUB_TOKEN` 创建/批准 PR，它使用 `AUTO_ALIGN_TOKEN`。
   私有构建源各自有相同的刷新流程；只有镜像进 `agent-binaries` 后才影响公开

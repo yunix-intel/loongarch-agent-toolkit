@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: mirror-agent-binaries
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   mirror:
