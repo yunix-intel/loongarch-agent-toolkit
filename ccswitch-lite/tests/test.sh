@@ -256,7 +256,9 @@ check(meta.get("appliedId") == "other-1", "restore appliedId falls back to other
 
 st = load(os.path.join(home, ".claude/settings.json"))
 env = st.get("env", {})
-for k in ["ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_MODEL",
+check(env.get("ANTHROPIC_BASE_URL") == "https://old.example",
+      "restore restores the pre-existing ANTHROPIC_BASE_URL")
+for k in ["ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_MODEL",
           "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL",
           "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_FABLE_MODEL"]:
     check(k not in env, "restore removes " + k)

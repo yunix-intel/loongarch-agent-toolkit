@@ -159,7 +159,7 @@ const indexHTML = `<!doctype html>
   (function () {
     var m = location.search.match(/[?&]token=([^&]+)/);
     if (m) {
-      token = decodeURIComponent(m[1]);
+      try { token = decodeURIComponent(m[1]); } catch (e) { token = m[1]; }
       try { sessionStorage.setItem("ccswitch_token", token); } catch (e) {}
       try { history.replaceState(null, "", location.pathname); } catch (e) {}
     } else {

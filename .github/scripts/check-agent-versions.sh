@@ -109,6 +109,53 @@ print(data.get("dist-tags", {}).get(sys.argv[2], ""))
 PY
 }
 
+# Print versions.<version>.dist.integrity, or an empty line if absent.
+dist_integrity() {
+    local file=$1 version=$2
+    [ -s "$file" ] && [ -n "$version" ] || return 0
+    "$PYTHON" -I - "$file" "$version" <<'PY'
+import json, sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        data = json.load(fh)
+    dist = (data.get("versions", {}).get(sys.argv[2], {}) or {}).get("dist", {}) or {}
+    print(dist.get("integrity", ""))
+except Exception:
+    print("")
+PY
+}
+
+# opencode-ai is the package the installer actually installs; the loong64
+# platform package is only an optional dependency with a different tarball.
+opencode_ai_integrity() {
+    local version=$1 file="$TMP/opencode-ai.json"
+    [ -n "$version" ] || return 0
+    if ! fetch "$LOONG_REGISTRY/opencode-ai" "$file"; then
+        warn "failed to query $LOONG_REGISTRY/opencode-ai"
+        return 0
+    fi
+    dist_integrity "$file" "$version"
+}
+
+# Claude Code's version endpoint is a single manifest, not a packument.
+claude_integrity() {
+    local version=$1 file="$TMP/claude-version.json"
+    [ -n "$version" ] || return 0
+    if ! fetch "$UPSTREAM_REGISTRY/@anthropic-ai%2Fclaude-code/$version" "$file"; then
+        warn "failed to query Claude Code $version metadata"
+        return 0
+    fi
+    "$PYTHON" -I - "$file" <<'PY'
+import json, sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        data = json.load(fh)
+    print((data.get("dist") or {}).get("integrity", ""))
+except Exception:
+    print("")
+PY
+}
+
 # npm upstream latest (URL-encoded package name).
 npm_latest() {
     local pkg=$1 file
@@ -476,6 +523,33 @@ OPENCODE_LOONG=$(opencode_loong_latest)
 DSH_LOONG=$(dsh_loong_latest)
 CLAUDE_JS=$(claude_js_latest)
 
+CODEX_PIN_INTEGRITY=$(manifest_value CODEX_NPM_INTEGRITY)
+OPENCODE_PIN_INTEGRITY=$(manifest_value OPENCODE_NPM_INTEGRITY)
+DSH_PIN_INTEGRITY=$(manifest_value DSH_NPM_INTEGRITY)
+CLAUDE_PIN_INTEGRITY=$(manifest_value CLAUDE_CODE_NPM_INTEGRITY)
+CODEX_PIN_REG_INTEGRITY=$(dist_integrity "$TMP/codex-loong.json" "$CODEX_PIN")
+OPENCODE_PIN_REG_INTEGRITY=$(opencode_ai_integrity "$OPENCODE_PIN")
+DSH_PIN_REG_INTEGRITY=$(dist_integrity "$TMP/dsh-loong.json" "$DSH_PIN")
+CLAUDE_PIN_REG_INTEGRITY=$(claude_integrity "$CLAUDE_PIN")
+CODEX_INTEGRITY=$(dist_integrity "$TMP/codex-loong.json" "$CODEX_LOONG")
+OPENCODE_INTEGRITY=$(opencode_ai_integrity "$OPENCODE_LOONG")
+DSH_INTEGRITY=$(dist_integrity "$TMP/dsh-loong.json" "$DSH_LOONG")
+CLAUDE_INTEGRITY=$(claude_integrity "$CLAUDE_JS")
+
+# A changed tarball for an already-pinned version is a supply-chain event.
+# Refuse to "heal" the pin silently; fail so a human reviews it.
+integrity_pin_check() {
+    local name=$1 version=$2 pin=$3 registry=$4
+    [ -n "$version" ] && [ -n "$pin" ] && [ -n "$registry" ] || return 0
+    if [ "$pin" != "$registry" ]; then
+        die "integrity mismatch for $name@$version: manifest=$pin registry=$registry"
+    fi
+}
+integrity_pin_check '@openai/codex' "$CODEX_PIN" "$CODEX_PIN_INTEGRITY" "$CODEX_PIN_REG_INTEGRITY"
+integrity_pin_check 'opencode-ai' "$OPENCODE_PIN" "$OPENCODE_PIN_INTEGRITY" "$OPENCODE_PIN_REG_INTEGRITY"
+integrity_pin_check '@deepseek-ai/dsh' "$DSH_PIN" "$DSH_PIN_INTEGRITY" "$DSH_PIN_REG_INTEGRITY"
+integrity_pin_check '@anthropic-ai/claude-code' "$CLAUDE_PIN" "$CLAUDE_PIN_INTEGRITY" "$CLAUDE_PIN_REG_INTEGRITY"
+
 ZCODE_RELEASE=$(gh_latest_release "$ZCODE_REPO")
 ZCODE_TAGS=$(gh_tags "$ZCODE_REPO" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)
 CCSWITCH_RELEASE=$(gh_latest_release "$CCSWITCH_REPO")
@@ -666,10 +740,28 @@ consider() {
     fi
 }
 
-consider CODEX_VERSION '@openai/codex' "$CODEX_PIN" "$CODEX_LOONG" "$CODEX_NOTE"
-consider OPENCODE_VERSION 'opencode-ai' "$OPENCODE_PIN" "$OPENCODE_SEL" 'opencode-linux-loong64 latest'
-consider DSH_VERSION '@deepseek-ai/dsh' "$DSH_PIN" "$DSH_SEL" 'Loongnix registry latest'
-consider CLAUDE_CODE_VERSION '@anthropic-ai/claude-code' "$CLAUDE_PIN" "$CLAUDE_SEL" 'newest tarball containing cli.js'
+# npm packages: the selected version and its sha512 integrity move together.
+# Without the integrity, an installer update would be rejected later, so do
+# not record a version-only change.
+consider_pkg() {
+    local key=$1 ikey=$2 name=$3 pin=$4 sel=$5 integrity=$6 reason=$7
+    [ -n "$sel" ] || return 0
+    if version_gt "$sel" "$pin"; then
+        if [ -z "$integrity" ]; then
+            warn "no registry integrity for $name@$sel; refusing to update $key"
+            return 0
+        fi
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+            "$key" "$name" "$pin" "$sel" "$reason" "$ikey" "$integrity" \
+            >> "$TMP/changes.tsv"
+        CHANGED=1
+    fi
+}
+
+consider_pkg CODEX_VERSION CODEX_NPM_INTEGRITY '@openai/codex' "$CODEX_PIN" "$CODEX_LOONG" "$CODEX_INTEGRITY" "$CODEX_NOTE"
+consider_pkg OPENCODE_VERSION OPENCODE_NPM_INTEGRITY 'opencode-ai' "$OPENCODE_PIN" "$OPENCODE_SEL" "$OPENCODE_INTEGRITY" 'opencode-linux-loong64 latest'
+consider_pkg DSH_VERSION DSH_NPM_INTEGRITY '@deepseek-ai/dsh' "$DSH_PIN" "$DSH_SEL" "$DSH_INTEGRITY" 'Loongnix registry latest'
+consider_pkg CLAUDE_CODE_VERSION CLAUDE_CODE_NPM_INTEGRITY '@anthropic-ai/claude-code' "$CLAUDE_PIN" "$CLAUDE_SEL" "$CLAUDE_INTEGRITY" 'newest tarball containing cli.js'
 
 validate_manifest_value() {
     local key=$1 value=$2
@@ -850,13 +942,16 @@ replace_readme_block() {
 }
 
 if [ "$CHANGED" -eq 1 ]; then
-    while IFS=$'\t' read -r key name old new reason; do
+    while IFS=$'\t' read -r key name old new reason ikey ival; do
         [ -n "$key" ] || continue
         case "$key" in
             CODEX_SOURCE|ZCODE_ASSETS|CC_SWITCH_PIN) continue ;;
         esac
         set_manifest_value "$key" "$new"
         set_fallback_value "$key" "$new"
+        if [ -n "${ikey:-}" ] && [ -n "${ival:-}" ]; then
+            set_manifest_value "$ikey" "$ival"
+        fi
     done < "$TMP/changes.tsv"
     replace_readme_block
 else
@@ -875,8 +970,9 @@ if [ "$CHANGED" -eq 1 ]; then
         printf 'not necessarily upstream `latest`.\n\n'
         printf '| 工具 | 旧值 | 新值 | 依据 |\n'
         printf '| --- | --- | --- | --- |\n'
-        while IFS=$'\t' read -r key name old new reason; do
+        while IFS=$'\t' read -r key name old new reason ikey ival; do
             [ -n "$key" ] || continue
+            [ -z "${ikey:-}" ] || reason="$reason（含 integrity）"
             printf '| %s (`%s`) | `%s` | `%s` | %s |\n' "$name" "$key" "$old" "$new" "$reason"
         done < "$TMP/changes.tsv"
         printf '\n`install/versions.env`、installer fallback 块和 README 版本表已同步，'
@@ -915,7 +1011,7 @@ fi
                 "$(wc -l < "$TMP/changes.tsv" | tr -d ' ')"
         fi
         printf '| 工具 | 旧值 | 新值 |\n| --- | --- | --- |\n'
-        while IFS=$'\t' read -r key name old new reason; do
+        while IFS=$'\t' read -r key name old new reason ikey ival; do
             [ -n "$key" ] || continue
             printf '| %s | `%s` | `%s` |\n' "$name" "$old" "$new"
         done < "$TMP/changes.tsv"

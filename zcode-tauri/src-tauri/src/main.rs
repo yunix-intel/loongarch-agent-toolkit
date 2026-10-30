@@ -55,6 +55,23 @@ fn parse_local_url(line: &str) -> Option<Url> {
     }
 }
 
+fn child_exit_status_unreaped(pid: i32) -> Option<i32> {
+    let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+    let rc = unsafe {
+        libc::waitid(
+            libc::P_PID,
+            pid as libc::id_t,
+            &mut info,
+            libc::WEXITED | libc::WNOWAIT | libc::WNOHANG,
+        )
+    };
+    if rc == 0 && unsafe { info.si_pid() } == pid as libc::pid_t {
+        Some(unsafe { info.si_status() })
+    } else {
+        None
+    }
+}
+
 fn kill_group(pgid: i32, child: &mut Child) {
     if pgid > 1 {
         unsafe {
@@ -162,10 +179,12 @@ fn spawn_backend() -> Result<(ChildHandle, Url), String> {
     let deadline = Instant::now() + Duration::from_secs(30);
     let mut found: Option<Url> = None;
     loop {
-        if let Ok(Some(status)) = child.try_wait() {
+        // Do not reap here: kill_group relies on the zombie keeping the PID
+        // and PGID reserved until it has killed the whole group.
+        if let Some(status) = child_exit_status_unreaped(pgid) {
             let mut c = child;
             kill_group(pgid, &mut c);
-            return Err(format!("zcode exited before reporting URL: {status}"));
+            return Err(format!("zcode exited before reporting URL: status {status}"));
         }
         let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {

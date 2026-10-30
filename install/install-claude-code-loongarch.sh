@@ -9,6 +9,7 @@
 #
 # Overridable:
 #   CLAUDE_CODE_VERSION=2.1.112
+#   CLAUDE_CODE_NPM_INTEGRITY=sha512-...
 #   CLAUDE_CODE_NPM_REGISTRY=https://registry.npmjs.org
 #   CLAUDE_CODE_PREFIX=/opt/claude-code
 #   CLAUDE_CODE_NODE=/opt/node26/bin/node
@@ -41,6 +42,7 @@ case "$(uname -m)" in
 esac
 
 CLAUDE_CODE_VERSION=${CLAUDE_CODE_VERSION:-$(manifest_get CLAUDE_CODE_VERSION 2.1.112)}
+CLAUDE_CODE_NPM_INTEGRITY=${CLAUDE_CODE_NPM_INTEGRITY:-$(manifest_get CLAUDE_CODE_NPM_INTEGRITY '')}
 CLAUDE_CODE_NPM_REGISTRY=${CLAUDE_CODE_NPM_REGISTRY:-$(manifest_get CLAUDE_CODE_NPM_REGISTRY https://registry.npmjs.org)}
 CLAUDE_CODE_PREFIX=${CLAUDE_CODE_PREFIX:-$(manifest_get CLAUDE_CODE_PREFIX /opt/claude-code)}
 CLAUDE_CODE_NODE=${CLAUDE_CODE_NODE:-$(manifest_get CLAUDE_CODE_NODE '')}
@@ -60,6 +62,10 @@ case "$CLAUDE_CODE_LINK_DEFAULT" in
 esac
 
 need install
+need mktemp
+
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/claude-code.XXXXXX")
+trap 'rm -rf "$TMP"' 0 1 2 15
 
 if [ -z "$CLAUDE_CODE_NODE" ]; then
     for candidate in /opt/node26/bin/node /opt/node24/bin/node /opt/node22-abi2/bin/node; do
@@ -87,15 +93,56 @@ if [ -e "$CLAUDE_CODE_PREFIX" ]; then
 fi
 mkdir -p "$CLAUDE_CODE_PREFIX"
 
-"$NPM" install -g \
+restore_prefix() {
+    rm -rf "$CLAUDE_CODE_PREFIX"
+    if [ -n "${BACKUP:-}" ] && [ -e "$BACKUP" ]; then
+        mv "$BACKUP" "$CLAUDE_CODE_PREFIX"
+        warn "restored previous Claude Code installation from $BACKUP"
+    fi
+}
+
+PKG_SRC="@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
+if [ -n "$CLAUDE_CODE_NPM_INTEGRITY" ]; then
+    case "$CLAUDE_CODE_NPM_INTEGRITY" in
+        sha512-*) ;;
+        *) restore_prefix; die "invalid CLAUDE_CODE_NPM_INTEGRITY" ;;
+    esac
+    need openssl
+    mkdir -p "$TMP/npm"
+    if ! "$NPM" pack "$PKG_SRC" \
+        --registry "$CLAUDE_CODE_NPM_REGISTRY" \
+        --pack-destination "$TMP/npm" >/dev/null; then
+        restore_prefix
+        die "npm pack failed for $PKG_SRC"
+    fi
+    TGZ=$(find "$TMP/npm" -maxdepth 1 -type f -name '*.tgz' | head -n 1)
+    if [ -z "$TGZ" ]; then
+        restore_prefix
+        die "npm pack produced no tarball for $PKG_SRC"
+    fi
+    ACTUAL="sha512-$(openssl dgst -sha512 -binary "$TGZ" | openssl base64 -A)"
+    if [ "$ACTUAL" != "$CLAUDE_CODE_NPM_INTEGRITY" ]; then
+        restore_prefix
+        die "npm integrity mismatch for $PKG_SRC: expected $CLAUDE_CODE_NPM_INTEGRITY, got $ACTUAL"
+    fi
+    PKG_SRC="$TGZ"
+fi
+
+if ! "$NPM" install -g \
     --prefix "$CLAUDE_CODE_PREFIX" \
     --registry "$CLAUDE_CODE_NPM_REGISTRY" \
     --fetch-retries 3 \
     --no-audit --no-fund \
-    "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
+    "$PKG_SRC"; then
+    restore_prefix
+    die "npm install failed for $PKG_SRC"
+fi
 
 CLI="$CLAUDE_CODE_PREFIX/lib/node_modules/@anthropic-ai/claude-code/cli.js"
-[ -f "$CLI" ] || die "Claude Code cli.js not found at $CLI"
+if [ ! -f "$CLI" ]; then
+    restore_prefix
+    die "Claude Code cli.js not found at $CLI"
+fi
 
 # The official npm package has native-only releases after 2.1.112.  Pin this
 # wrapper to the JS entrypoint and disable the self-updater so it cannot pull a

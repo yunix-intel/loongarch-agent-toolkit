@@ -35,7 +35,7 @@ case "$(uname -m)" in
     *) die "this script targets LoongArch, got: $(uname -m)" ;;
 esac
 
-CC_SWITCH_VERSION=${CC_SWITCH_VERSION:-$(manifest_get CC_SWITCH_VERSION v4.0.19)}
+CC_SWITCH_VERSION=${CC_SWITCH_VERSION:-$(manifest_get CC_SWITCH_VERSION v4.0.21)}
 CC_SWITCH_DEB_URL=${CC_SWITCH_DEB_URL:-$(manifest_get CC_SWITCH_DEB_URL '')}
 CC_SWITCH_DEB_SHA256=${CC_SWITCH_DEB_SHA256:-$(manifest_get CC_SWITCH_DEB_SHA256 '')}
 CC_SWITCH_SOURCE_TOKEN=${CC_SWITCH_SOURCE_TOKEN:-}

@@ -1,4 +1,9 @@
-name: Generate dependency SBOMs
+name: Verify mirrored SBOMs
+
+# The dependency SBOMs are generated inside the private build workflows, where
+# the patched/overridden source tree exists.  This public workflow only checks
+# that the mirrored metadata is present and that the component summary's
+# checksums match the published SHA256SUMS.
 
 on:
   workflow_run:
@@ -9,75 +14,74 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: sbom-generate
+  group: verify-mirrored-sboms
   cancel-in-progress: true
 
 jobs:
-  generate:
+  verify:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
 
-      - name: Resolve versions from the public mirror
+      - name: Download public release metadata
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          ASSETS=$(gh release view agent-binaries --repo yunix-intel/loongarch-agent-toolkit \
-            --json assets --jq '.assets[].name')
-          CODEX_VER=$(printf '%s\n' "$ASSETS" \
-            | sed -n 's/^codex-rust-v\([0-9.]*\)-loongarch64\.tar\.gz$/\1/p' | sort -V | tail -n 1)
-          ZCODE_VER=$(printf '%s\n' "$ASSETS" \
-            | sed -n 's/^zcode-cli_\([0-9.]*\)_loong64\.tar\.gz$/\1/p' | sort -V | tail -n 1)
-          CC_VER=$(printf '%s\n' "$ASSETS" \
-            | sed -n 's/^cc-switch_\([0-9.]*\)\.loong64\.1_loong64\.deb$/\1/p' | sort -V | tail -n 1)
-          [ -n "$CODEX_VER" ] && [ -n "$ZCODE_VER" ] && [ -n "$CC_VER" ] || {
-            echo "cannot resolve all mirror versions: Codex=$CODEX_VER ZCode=$ZCODE_VER cc-switch=$CC_VER" >&2
-            exit 1
-          }
-          echo "CODEX_VER=$CODEX_VER" >> "$GITHUB_ENV"
-          echo "ZCODE_VER=$ZCODE_VER" >> "$GITHUB_ENV"
-          echo "CC_VER=$CC_VER" >> "$GITHUB_ENV"
+          mkdir -p release
+          gh release download agent-binaries \
+            --repo yunix-intel/loongarch-agent-toolkit \
+            --pattern 'SBOM.spdx.json' \
+            --pattern 'SBOM-*.spdx.json' \
+            --pattern 'SHA256SUMS' -D release
+          ls -l release
 
-      - name: Fetch upstream source trees at the mirrored tags
+      - name: Validate SPDX and checksums
         run: |
           set -euo pipefail
-          git clone -q --depth 1 --branch "rust-v${CODEX_VER}" https://github.com/openai/codex.git codex
-          git clone -q --depth 1 --branch "v${ZCODE_VER}" https://github.com/zai-org/ZCode.git zcode
-          git clone -q --depth 1 --branch "v${CC_VER}" https://github.com/farion1231/cc-switch.git cc-switch
+          python3 -I - <<'PY'
+          import json
+          import pathlib
+          import sys
 
-      - name: Install syft
-        run: |
-          set -euo pipefail
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/v1.55.0/install.sh \
-            | sh -s -- -b /usr/local/bin
-          syft version
+          root = pathlib.Path("release")
+          sums = {}
+          for line in (root / "SHA256SUMS").read_text(encoding="utf-8").splitlines():
+              parts = line.split()
+              if len(parts) >= 2:
+                  sums[parts[1].lstrip("*")] = parts[0].lower()
 
-      - name: Generate per-artifact SPDX dependency graphs
-        run: |
-          set -euo pipefail
-          syft dir:codex -o spdx-json=SBOM-codex.spdx.json
-          syft dir:zcode -o spdx-json=SBOM-zcode.spdx.json
-          syft dir:cc-switch -o spdx-json=SBOM-cc-switch.spdx.json
-          python3 - <<'PY'
-          import json, os
-          for p in ("SBOM-codex.spdx.json", "SBOM-zcode.spdx.json", "SBOM-cc-switch.spdx.json"):
-              d = json.load(open(p, encoding="utf-8"))
-              print(p, "packages=", len(d.get("packages", [])), "relationships=", len(d.get("relationships", [])))
+          document = json.loads((root / "SBOM.spdx.json").read_text(encoding="utf-8"))
+          errors = []
+          packages = document.get("packages", [])
+          for package in packages:
+              name = package.get("name", "")
+              for checksum in package.get("checksums", []):
+                  if checksum.get("algorithm") != "SHA256":
+                      continue
+                  want = checksum.get("checksumValue", "").lower()
+                  got = sums.get(name)
+                  if got is None:
+                      errors.append(f"{name}: missing from SHA256SUMS")
+                  elif got != want:
+                      errors.append(f"{name}: SBOM {want} != SHA256SUMS {got}")
+          if errors:
+              print("\n".join(errors), file=sys.stderr)
+              sys.exit(1)
+          print(f"SBOM.spdx.json: {len(packages)} packages match SHA256SUMS")
+
+          for path in sorted(root.glob("SBOM-*.spdx.json")):
+              data = json.loads(path.read_text(encoding="utf-8"))
+              count = len(data.get("packages", []))
+              if count == 0:
+                  print(f"{path.name}: no packages", file=sys.stderr)
+                  sys.exit(1)
+              print(f"{path.name}: {count} packages")
           PY
-
-      - name: Upload SBOMs to the public mirror release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          gh release upload agent-binaries \
-            SBOM-codex.spdx.json SBOM-zcode.spdx.json SBOM-cc-switch.spdx.json \
-            --repo yunix-intel/loongarch-agent-toolkit --clobber

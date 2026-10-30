@@ -155,8 +155,11 @@ jobs:
             # with a human-owned PAT they start automatically. The token is
             # only in the environment and is never written into the repo.
             git config --local --unset-all http.https://github.com/.extraheader || true
-            gh auth setup-git
           fi
+          # checkout used persist-credentials: false. Configure git with the
+          # token in GH_TOKEN for both the PAT and the GITHUB_TOKEN fallback;
+          # otherwise the push below has no credentials at all.
+          gh auth setup-git
 
           # Validate exactly what is about to be pushed; do not rely on
           # pull_request checks that may not run for a bot-created PR.

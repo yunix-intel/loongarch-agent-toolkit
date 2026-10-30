@@ -7,14 +7,15 @@ mirrored in this toolkit's public
 [`agent-binaries`](https://github.com/yunix-intel/loongarch-agent-toolkit/releases/tag/agent-binaries)
 release.
 
-Status: upstream **v4.0.19** built natively on LoongArch. The complete UI was
+Status: upstream **v4.0.21** built natively on LoongArch. The complete UI was
 verified under Xvfb, including the Claude Code, Claude Desktop, Codex, Gemini,
 OpenCode, MCP, Skills and Prompts pages.
 
 **Do not build from the fork's `main`.** It is based on upstream `79e754ab`
 (v4.0.15 era) plus only the 10 LoongArch CI files. Releases are built from the
-upstream tag (e.g. `v4.0.21`) checked out unmodified; the private build source's
-`LOONGARCH.md` describes the split.
+upstream tag (e.g. `v4.0.21`) with the reviewed zip 9 compatibility patch
+(`.github/scripts/patch-zip9.py`) applied before `cargo build`; the private
+build source's `LOONGARCH.md` describes the split.
 
 ## Earlier claim
 
@@ -114,8 +115,8 @@ key). The `Upstream LoongArch Watch` workflow runs every six hours:
 cc-switch_<upstream-version>.loong64.1_loong64.deb
 ```
 
-The package `Version` field uses `~` (`4.0.19~loong64.1`); GitHub normalizes
-`~` to `.` in asset filenames (`cc-switch_4.0.19.loong64.1_loong64.deb`).
+The package `Version` field uses `~` (`4.0.21~loong64.1`); GitHub normalizes
+`~` to `.` in asset filenames (`cc-switch_4.0.21.loong64.1_loong64.deb`).
 
 Contents:
 
