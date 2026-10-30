@@ -55,28 +55,34 @@ automation/tests (minimum 16 characters).
 
 ## Releases
 
-Public release assets ship with `SHA256SUMS`, `SBOM.spdx.json` (component
-summary generated from the mirrored bytes), per-artifact SPDX dependency
-graphs (`SBOM-codex.spdx.json`, `SBOM-zcode.spdx.json`,
-`SBOM-cc-switch.spdx.json`), and license/NOTICE files. The per-artifact SBOMs
-are generated inside the private build workflows, where the patched/overridden
-source tree exists, and are copied here verbatim; the public `sbom-generate`
-workflow only verifies them and the summary checksums. The automatic chain is:
+Public release assets ship with `SHA256SUMS` generated from the **final
+release asset list**, `SBOM.spdx.json` (component summary generated from the
+mirrored bytes), per-artifact SPDX dependency graphs (`SBOM-codex.spdx.json`,
+`SBOM-zcode.spdx.json`, `SBOM-cc-switch.spdx.json`), and license/NOTICE files.
+The per-artifact SBOMs are generated inside the private build workflows, where
+the patched/overridden source tree exists, and are copied here verbatim; the
+public `sbom-generate` workflow only verifies them and the summary checksums.
+The promotion chain is:
 
-1. `mirror-upload.yml` (daily/manual) copies published assets from the private
-   build repositories, verifies their SHA256SUMS, uploads them to
-   `agent-binaries`, and refreshes the public `SHA256SUMS`;
-2. successful mirror upload runs `mirror-attest.yml`, which creates GitHub
-   artifact attestations for the public assets;
-3. successful mirror upload also runs `sbom-generate.yml` in verify-only mode.
+1. **Stage agent binaries** (daily/manual) copies published private assets into
+   the draft `agent-binaries-staging` release, verifies the private
+   `SHA256SUMS`, and writes `SIGNATURE-STATUS`; it never writes the public
+   release;
+2. a maintainer reviews the staging draft and runs **Promote staged binaries**
+   with `confirm=PROMOTE` and `dry_run=false`. Promotion verifies the staging
+   `SHA256SUMS` and each signed component, then uploads to `agent-binaries`
+   and rebuilds the public `SHA256SUMS` from the final asset list. Unsigned
+   legacy components require `allow_unsigned=true` and are reported as such;
+3. successful promotion runs `sbom-generate.yml` in verify-only mode and
+   `mirror-attest.yml`, which creates GitHub artifact attestations for the
+   public assets.
 
-The private release jobs create **draft** releases; `mirror-upload` only selects
-`draft == false`, so a human publishing the draft is the promotion gate. The
-`mirror-attest` attestation proves that the mirror workflow handled the exact
-asset digest; it is **mirror integrity**, not proof that the binary was built
-from the tagged source. Signed release manifests (private key signs
-`SHA256SUMS`/`provenance.json`, public key verifies) carry the build-origin
-claim.
+The private release jobs create **draft** releases; the staging workflow only
+selects `draft == false`, so publishing the private draft is the first human
+gate. The second gate is the manual promotion workflow. The `mirror-attest`
+attestation proves that the mirror workflow handled the exact asset digest; it
+is **mirror integrity**, not proof that the binary was built from the tagged
+source. Signed release manifests carry the build-origin claim.
 
 Verify with `gh attestation verify <asset> --repo
 yunix-intel/loongarch-agent-toolkit`. Verify `SHA256SUMS` before installing.
@@ -84,18 +90,22 @@ yunix-intel/loongarch-agent-toolkit`. Verify `SHA256SUMS` before installing.
 ## Release signing
 
 Private build releases sign a binary-only manifest (`BINARIES-SHA256SUMS`) and
-a small `provenance.json` with the project key. The corresponding public key is
-[`release-pubkey.pem`](release-pubkey.pem) (SHA-256 fingerprint
-`b7095f523ce8d54ff0c599d11429de42ee62537b3a3937c0cebe8003cc260ddb`). The mirror
-verifies both signatures before copying a release:
+a small `provenance.json` with the project key. The staging mirror prefixes
+them per component (`codex-`, `zcode-`, `cc-switch-`) so the three private
+releases cannot overwrite each other in the shared release. The corresponding
+public key is [`release-pubkey.pem`](release-pubkey.pem) (SHA-256 fingerprint
+`b7095f523ce8d54ff0c599d11429de42ee62537b3a3937c0cebe8003cc260ddb`). The
+promotion workflow verifies every signed component before publishing:
 
 ```sh
 openssl dgst -sha256 -verify release-pubkey.pem \
-  -signature BINARIES-SHA256SUMS.sig BINARIES-SHA256SUMS
+  -signature codex-BINARIES-SHA256SUMS.sig codex-BINARIES-SHA256SUMS
 openssl dgst -sha256 -verify release-pubkey.pem \
-  -signature provenance.json.sig provenance.json
-sha256sum -c BINARIES-SHA256SUMS
+  -signature codex-provenance.json.sig codex-provenance.json
+sha256sum -c codex-BINARIES-SHA256SUMS
 ```
 
-The public `SHA256SUMS` is a superset that also covers SBOMs, notices and the
-signature files themselves.
+The public `SHA256SUMS` is a superset that also covers SBOMs, notices, the
+`SIGNATURE-STATUS` file and the signature files themselves. A component listed
+as `unsigned` in `SIGNATURE-STATUS` is a legacy release and requires an explicit
+`allow_unsigned=true` at promotion.

@@ -6,9 +6,6 @@ name: Verify mirrored SBOMs
 # checksums match the published SHA256SUMS.
 
 on:
-  workflow_run:
-    workflows: ["Mirror agent binaries"]
-    types: [completed]
   schedule:
     - cron: '17 5 * * *'
   workflow_dispatch:
@@ -39,8 +36,12 @@ jobs:
           gh release download agent-binaries \
             --repo yunix-intel/loongarch-agent-toolkit \
             --pattern 'SBOM.spdx.json' \
-            --pattern 'SBOM-*.spdx.json' \
             --pattern 'SHA256SUMS' -D release
+          # Per-artifact SBOMs are optional until the private build produces
+          # them; the component summary is mandatory.
+          gh release download agent-binaries \
+            --repo yunix-intel/loongarch-agent-toolkit \
+            --pattern 'SBOM-*.spdx.json' -D release || true
           ls -l release
 
       - name: Validate SPDX and checksums
@@ -61,6 +62,10 @@ jobs:
           document = json.loads((root / "SBOM.spdx.json").read_text(encoding="utf-8"))
           errors = []
           packages = document.get("packages", [])
+          if not packages:
+              print("SBOM.spdx.json: no packages", file=sys.stderr)
+              sys.exit(1)
+          package_names = {p.get("name", "") for p in packages}
           for package in packages:
               name = package.get("name", "")
               for checksum in package.get("checksums", []):
@@ -72,6 +77,12 @@ jobs:
                       errors.append(f"{name}: missing from SHA256SUMS")
                   elif got != want:
                       errors.append(f"{name}: SBOM {want} != SHA256SUMS {got}")
+          missing = [
+              name for name in sums
+              if (name.endswith(".tar.gz") or name.endswith(".deb"))
+              and name not in package_names
+          ]
+          errors.extend(f"{name}: binary has no SBOM package" for name in sorted(missing))
           if errors:
               print("\n".join(errors), file=sys.stderr)
               sys.exit(1)
