@@ -13,8 +13,8 @@ name: agent-version-watch
 
 on:
   schedule:
-    # 02:17 UTC daily (off the hour to avoid the cron rush).
-    - cron: "17 2 * * *"
+    # 02:17 UTC every Monday (off the hour to avoid the cron rush).
+    - cron: "17 2 * * 1"
   workflow_dispatch:
     inputs:
       dry_run:

@@ -240,6 +240,11 @@ install_pkg() {
     pkg=$1
     version=$2
     integrity=${3:-}
+    ignore_scripts=${4:-0}
+    case "$ignore_scripts" in
+        0|1) ;;
+        *) die "invalid ignore_scripts for $pkg: $ignore_scripts" ;;
+    esac
     case "$integrity" in
         ''|sha512-*) ;;
         *) die "invalid npm integrity for $pkg: $integrity" ;;
@@ -273,12 +278,16 @@ install_pkg() {
                 pack_failed=1
             fi
         fi
-        if [ "$pack_failed" -eq 0 ] && "$NPM" install -g \
+        set -- install -g \
             --prefix "$NODE_PREFIX" \
             --registry "$NPM_REGISTRY" \
             --fetch-retries 3 \
-            --no-audit --no-fund \
-            "$src"; then
+            --no-audit --no-fund
+        if [ "$ignore_scripts" = 1 ]; then
+            set -- "$@" --ignore-scripts
+        fi
+        set -- "$@" "$src"
+        if [ "$pack_failed" -eq 0 ] && "$NPM" "$@"; then
             [ -z "$packdir" ] || rm -rf "$packdir"
             return 0
         fi
@@ -430,16 +439,18 @@ EOF
 }
 
 if [ "$CODEX_CHANNEL" = "npm" ]; then
-    install_pkg "@openai/codex" "$CODEX_VERSION" "$CODEX_NPM_INTEGRITY"
+    # Codex ships prebuilt optional native packages; do not run its scripts.
+    install_pkg "@openai/codex" "$CODEX_VERSION" "$CODEX_NPM_INTEGRITY" 1
 fi
-install_pkg "opencode-ai" "$OPENCODE_VERSION" "$OPENCODE_NPM_INTEGRITY"
+# OpenCode likewise ships prebuilt optional native packages.
+install_pkg "opencode-ai" "$OPENCODE_VERSION" "$OPENCODE_NPM_INTEGRITY" 1
 # dsh currently has no linux-loong64 node-pty prebuild, so npm may build it
-# with node-gyp.  Warn early instead of failing halfway through the install.
+# with node-gyp.  Keep lifecycle scripts enabled and warn early instead.
 for tool in gcc g++ make python3; do
     command -v "$tool" >/dev/null 2>&1 \
         || warn "$tool not found; dsh node-pty may fail to build from source"
 done
-install_pkg "@deepseek-ai/dsh" "$DSH_VERSION" "$DSH_NPM_INTEGRITY"
+install_pkg "@deepseek-ai/dsh" "$DSH_VERSION" "$DSH_NPM_INTEGRITY" 0
 
 CODEX_JS="$NODE_PREFIX/lib/node_modules/@openai/codex/bin/codex.js"
 DSH_JS="$NODE_PREFIX/lib/node_modules/@deepseek-ai/dsh/lib/bin.js"
