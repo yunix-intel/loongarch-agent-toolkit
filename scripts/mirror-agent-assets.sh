@@ -128,7 +128,9 @@ upload_public() {
 prefix_metadata() {
     local dir=$1 prefix=$2 f
     for f in BINARIES-SHA256SUMS BINARIES-SHA256SUMS.sig provenance.json provenance.json.sig; do
-        [ -f "$dir/$f" ] && mv "$dir/$f" "$dir/$prefix-$f"
+        if [ -f "$dir/$f" ]; then
+            mv "$dir/$f" "$dir/$prefix-$f"
+        fi
     done
 }
 
