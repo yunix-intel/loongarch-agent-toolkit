@@ -53,9 +53,22 @@ jobs:
         env:
           AUTO_ALIGN_TOKEN: ${{ secrets.AUTO_ALIGN_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MODE: ${{ inputs.dry_run && 'check' || 'promote' }}
-          ALLOW_UNSIGNED: ${{ inputs.allow_unsigned && '1' || '0' }}
-        run: bash scripts/mirror-agent-assets.sh
+          DRY_RUN: ${{ inputs.dry_run }}
+          ALLOW_UNSIGNED_INPUT: ${{ inputs.allow_unsigned }}
+        run: |
+          set -euo pipefail
+          if [ "$DRY_RUN" = "true" ]; then
+            MODE=check
+          else
+            MODE=promote
+          fi
+          if [ "$ALLOW_UNSIGNED_INPUT" = "true" ]; then
+            ALLOW_UNSIGNED=1
+          else
+            ALLOW_UNSIGNED=0
+          fi
+          export MODE ALLOW_UNSIGNED
+          bash scripts/mirror-agent-assets.sh
 
       - name: Run post-promotion verification and attestation
         if: ${{ !inputs.dry_run }}
