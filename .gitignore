@@ -42,8 +42,9 @@ cookies.txt
 .env
 .env.*
 *.pem
-# Public release-signing key; the private half lives only in GitHub Secrets.
+# Public release-signing keys; the private halves live only in GitHub Secrets.
 !release-pubkey.pem
+!release-pubkey-ccswitch.pem
 *.key
 *.crt
 .ssh/

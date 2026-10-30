@@ -91,18 +91,28 @@ yunix-intel/loongarch-agent-toolkit`. Verify `SHA256SUMS` before installing.
 ## Release signing
 
 Private build releases sign a binary-only manifest (`BINARIES-SHA256SUMS`) and
-a small `provenance.json` with the project key. The staging mirror prefixes
-them per component (`codex-`, `zcode-`, `cc-switch-`) so the three private
-releases cannot overwrite each other in the shared release. The corresponding
-public key is [`release-pubkey.pem`](release-pubkey.pem) (SHA-256 fingerprint
-`b7095f523ce8d54ff0c599d11429de42ee62537b3a3937c0cebe8003cc260ddb`). The
-promotion workflow verifies every signed component before publishing:
+a small `provenance.json` with a per-repository key. The promotion workflow
+prefixes them per component (`codex-`, `zcode-`, `cc-switch-`) so the three
+private releases cannot overwrite each other in the shared release.
+
+Two public keys are used:
+
+- `codex` and `zcode` (signed by `loongarch-agent-builds`):
+  [`release-pubkey.pem`](release-pubkey.pem), SHA-256 fingerprint
+  `b7095f523ce8d54ff0c599d11429de42ee62537b3a3937c0cebe8003cc260ddb`;
+- `cc-switch` (signed by `cc-switch-loongarch`):
+  [`release-pubkey-ccswitch.pem`](release-pubkey-ccswitch.pem), SHA-256
+  fingerprint `05206a67cf33e1c58c8f2bf5198554eec26ef15a16347e771bf4e2aded54779a`.
+
+The promotion workflow verifies every signed component with its own key:
 
 ```sh
 openssl dgst -sha256 -verify release-pubkey.pem \
   -signature codex-BINARIES-SHA256SUMS.sig codex-BINARIES-SHA256SUMS
 openssl dgst -sha256 -verify release-pubkey.pem \
   -signature codex-provenance.json.sig codex-provenance.json
+openssl dgst -sha256 -verify release-pubkey-ccswitch.pem \
+  -signature cc-switch-BINARIES-SHA256SUMS.sig cc-switch-BINARIES-SHA256SUMS
 sha256sum -c codex-BINARIES-SHA256SUMS
 ```
 
