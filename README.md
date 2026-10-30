@@ -178,7 +178,7 @@ overrides the install prefix. The system Node is untouched.
 | Codex | `0.164.0` | 龙芯 loong64 可用最新版（非上游 latest） |
 | Codex (source) | `0.164.0` | 私有 builds 仓库的 LoongArch 源码构建（可选通道） |
 | OpenCode | `1.19.0` | `opencode-linux-loong64` 最新版 |
-| DSH | `0.2.1-rc.2` | Loongnix registry 最新版 |
+| DSH | `0.2.1-rc.5` | Loongnix registry 最新版 |
 | Claude Code | `2.1.112` | 最后一个 npm tarball 仍带 `cli.js` 的版本 |
 | ZCode | `v3.15.1` | builds 仓库中资产齐全的最新 release（tag 仅作 upstream） |
 | cc-switch | `v4.0.21` | 私有 builds 仓库中最新的 loong64 deb release |
