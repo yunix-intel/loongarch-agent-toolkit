@@ -80,7 +80,6 @@ jobs:
           shellcheck -s sh install/codex install/dsh install/opencode
           shellcheck -s bash .github/scripts/check-agent-versions.sh
           shellcheck -s bash .github/scripts/check-versions-consistency.sh
-          shellcheck -s bash .github/scripts/check-versions-consistency.sh
 
   versions:
     name: Version manifest consistency

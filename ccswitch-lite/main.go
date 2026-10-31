@@ -1818,10 +1818,22 @@ func loadOrCreateWebToken(p *Paths) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(path, []byte(token+"\n"), 0600); err != nil {
+	f, err := os.OpenFile(path,
+		os.O_WRONLY|os.O_CREATE|os.O_TRUNC|syscall.O_NOFOLLOW, 0600)
+	if err != nil {
 		return "", err
 	}
-	_ = os.Chmod(path, 0600)
+	if _, err := f.Write([]byte(token + "\n")); err != nil {
+		f.Close()
+		return "", err
+	}
+	if err := f.Chmod(0600); err != nil {
+		f.Close()
+		return "", err
+	}
+	if err := f.Close(); err != nil {
+		return "", err
+	}
 	return token, nil
 }
 
