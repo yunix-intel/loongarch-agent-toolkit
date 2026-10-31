@@ -167,7 +167,24 @@ if [ "$SYS_ABI" = "ABI1.0" ] && [ "${ALLOW_ABI1:-0}" != "1" ]; then
 fi
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/loongarch-agents.XXXXXX")
-cleanup() { rm -rf "$TMP"; }
+NODE_ROLLBACK=''
+NODE_CREATED=0
+cleanup() {
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+        if [ -n "$NODE_ROLLBACK" ] && [ -e "$NODE_ROLLBACK" ]; then
+            rm -rf "$NODE_PREFIX"
+            if mv "$NODE_ROLLBACK" "$NODE_PREFIX"; then
+                warn "restored previous Node prefix from $NODE_ROLLBACK"
+            else
+                warn "failed to restore Node prefix from $NODE_ROLLBACK"
+            fi
+        elif [ "$NODE_CREATED" = "1" ]; then
+            rm -rf "$NODE_PREFIX"
+        fi
+    fi
+    rm -rf "$TMP"
+}
 trap cleanup EXIT HUP INT TERM
 
 NODE_TARBALL=$(basename "$NODE_URL")
@@ -197,8 +214,8 @@ if tar -tJf "$TMP/$NODE_TARBALL" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
     die "Node archive contains an absolute or parent-traversal path"
 fi
 if tar -tvJf "$TMP/$NODE_TARBALL" | grep -E '^[lh]' \
-    | grep -Eq ' (->|link to) /'; then
-    die "Node archive contains an absolute symlink target"
+    | grep -Eq ' (->|link to) (.*/)?\.\.(/|$)| (->|link to) /'; then
+    die "Node archive contains an absolute or parent-traversal symlink target"
 fi
 tar -xJf "$TMP/$NODE_TARBALL" -C "$TMP/node" --strip-components=1
 
@@ -212,16 +229,19 @@ if [ -e "$NODE_PREFIX" ]; then
     BACKUP="$NODE_PREFIX.bak.$(date +%Y%m%d-%H%M%S)"
     log "moving existing $NODE_PREFIX to $BACKUP"
     mv "$NODE_PREFIX" "$BACKUP"
+    NODE_ROLLBACK="$BACKUP"
 fi
 mkdir -p "$(dirname "$NODE_PREFIX")"
 if ! mv "$TMP/node" "$NODE_PREFIX"; then
     if [ -n "${BACKUP:-}" ]; then
         rm -rf "$NODE_PREFIX"
         mv "$BACKUP" "$NODE_PREFIX"
+        NODE_ROLLBACK=''
         die "failed to install Node; restored $BACKUP"
     fi
     die "failed to install Node at $NODE_PREFIX"
 fi
+NODE_CREATED=1
 
 [ -x "$NODE_PREFIX/bin/node" ] || die "Node install failed: $NODE_PREFIX/bin/node missing"
 NODE_VER=$("$NODE_PREFIX/bin/node" -v)
