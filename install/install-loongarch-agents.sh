@@ -128,6 +128,7 @@ esac
 need readelf
 need curl
 need tar
+need realpath
 need xz
 need sha256sum
 need install
@@ -187,6 +188,37 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
+# A link target is relative to the directory containing the link.  Resolve it
+# before deciding whether it escapes the extraction root; a bare ".." is not
+# unsafe if it stays inside (Node ships bin/npm -> ../lib/...).
+check_tar_links() {
+    link_archive=$1
+    link_base=$(realpath -m "$2")
+    while IFS=$'\t' read -r link_member link_target; do
+        [ -n "$link_member" ] || continue
+        case "$link_target" in
+            /*) die "archive $link_archive contains an absolute link target: $link_member -> $link_target" ;;
+        esac
+        link_resolved=$(realpath -m "$link_base/$(dirname "$link_member")/$link_target") \
+            || die "cannot resolve link target in $link_archive: $link_member -> $link_target"
+        case "$link_resolved" in
+            "$link_base"|"$link_base"/*) ;;
+            *) die "archive $link_archive link escapes the extraction root: $link_member -> $link_target" ;;
+        esac
+    done < <(tar -tvf "$link_archive" | awk '
+        /^[lh]/ {
+            if ((i = index($0, " -> ")) > 0) {
+                left = substr($0, 1, i - 1)
+                target = substr($0, i + 4)
+            } else if ((i = index($0, " link to ")) > 0) {
+                left = substr($0, 1, i - 1)
+                target = substr($0, i + 9)
+            } else next
+            n = split(left, fields, " ")
+            print fields[n] "\t" target
+        }')
+}
+
 NODE_TARBALL=$(basename "$NODE_URL")
 log "downloading Node $NODE_VERSION from $NODE_URL"
 curl -fL --retry 3 --connect-timeout 20 -o "$TMP/$NODE_TARBALL" "$NODE_URL"
@@ -213,10 +245,7 @@ mkdir -p "$TMP/node"
 if tar -tJf "$TMP/$NODE_TARBALL" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
     die "Node archive contains an absolute or parent-traversal path"
 fi
-if tar -tvJf "$TMP/$NODE_TARBALL" | grep -E '^[lh]' \
-    | grep -Eq ' (->|link to) (.*/)?\.\.(/|$)| (->|link to) /'; then
-    die "Node archive contains an absolute or parent-traversal symlink target"
-fi
+check_tar_links "$TMP/$NODE_TARBALL" "$TMP/node"
 tar -xJf "$TMP/$NODE_TARBALL" -C "$TMP/node" --strip-components=1
 
 [ -x "$TMP/node/bin/node" ] || die "Node install failed: $TMP/node/bin/node missing"
@@ -394,10 +423,6 @@ install_codex_source() {
     if tar -tzf "$archive" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
         die "Codex source archive contains unsafe paths"
     fi
-    if tar -tvzf "$archive" | grep -E '^[lh]' \
-        | grep -Eq ' (->|link to) (/|(.*/)?\.\.(/|$))'; then
-        die "Codex source archive contains an unsafe link target"
-    fi
     # Reject a symlink/hardlink entry for the codex executable before
     # extracting; a later chmod would otherwise follow it.
     if tar -tvzf "$archive" | grep -E '^[lh]' \
@@ -407,6 +432,7 @@ install_codex_source() {
 
     src="$TMP/codex-src"
     mkdir -p "$src"
+    check_tar_links "$archive" "$src"
     tar -xzf "$archive" -C "$src"
 
     bin=''
