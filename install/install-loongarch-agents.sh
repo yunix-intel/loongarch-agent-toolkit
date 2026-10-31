@@ -170,6 +170,9 @@ fi
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/loongarch-agents.XXXXXX")
 NODE_ROLLBACK=''
 NODE_CREATED=0
+CODEX_ROLLBACK=''
+CODEX_CREATED=0
+CODEX_DEST=''
 cleanup() {
     rc=$?
     if [ "$rc" -ne 0 ]; then
@@ -182,6 +185,18 @@ cleanup() {
             fi
         elif [ "$NODE_CREATED" = "1" ]; then
             rm -rf "$NODE_PREFIX"
+        fi
+        if [ -n "$CODEX_DEST" ]; then
+            if [ -n "$CODEX_ROLLBACK" ] && [ -e "$CODEX_ROLLBACK" ]; then
+                rm -rf "$CODEX_DEST"
+                if mv "$CODEX_ROLLBACK" "$CODEX_DEST"; then
+                    warn "restored previous Codex source install from $CODEX_ROLLBACK"
+                else
+                    warn "failed to restore Codex source install from $CODEX_ROLLBACK"
+                fi
+            elif [ "$CODEX_CREATED" = "1" ]; then
+                rm -rf "$CODEX_DEST"
+            fi
         fi
     fi
     rm -rf "$TMP"
@@ -461,12 +476,15 @@ install_codex_source() {
 
     rel=${bin#"$src"/}
     dest="$CODEX_SOURCE_PREFIX/codex-$version"
+    CODEX_DEST="$dest"
     if [ -e "$dest" ]; then
         backup="$dest.bak.$(date +%Y%m%d-%H%M%S)"
         log "moving existing $dest to $backup"
         mv "$dest" "$backup"
+        CODEX_ROLLBACK="$backup"
     fi
     mkdir -p "$(dirname "$dest")"
+    CODEX_CREATED=1
     mv "$src" "$dest"
 
     installed_bin="$dest/$rel"
