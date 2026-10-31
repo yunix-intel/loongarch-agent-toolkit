@@ -23,9 +23,9 @@ private releases and reports their checksums and signature status; it never
 writes the public release. The private releases themselves are the staging
 area. A maintainer reviews them, then runs **Promote staged binaries** with
 `confirm=PROMOTE` and `dry_run=false`. Promotion re-downloads and verifies the
-private assets, requires signatures unless `allow_unsigned=true` is explicitly
-set for a reviewed legacy release, then publishes to `agent-binaries` and
-rebuilds `SHA256SUMS` from the final asset list. Only after promotion do
+private assets and refuses any unsigned component; legacy releases are signed
+first with **Sign an existing release**, then published to `agent-binaries`,
+which rebuilds `SHA256SUMS` from the final asset list. Only after promotion do
 **Verify mirrored SBOMs** and **Attest mirror assets** run. Per-component
 signed manifests are `codex-BINARIES-SHA256SUMS`, `zcode-BINARIES-SHA256SUMS`,
 `cc-switch-BINARIES-SHA256SUMS` and the matching `*-provenance.json`; verify

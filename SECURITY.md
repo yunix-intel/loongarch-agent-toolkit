@@ -70,10 +70,11 @@ The promotion chain is:
    in the private releases;
 2. a maintainer reviews the private releases and runs **Promote staged
    binaries** with `confirm=PROMOTE` and `dry_run=false`. Promotion
-   re-downloads and verifies the private assets, requires signatures unless
-   `allow_unsigned=true` is explicitly set for a reviewed legacy release, then
-   uploads to `agent-binaries` and rebuilds the public `SHA256SUMS` from the
-   final asset list;
+   re-downloads and verifies the private assets, refuses any unsigned
+   component, then uploads to `agent-binaries` and rebuilds the public
+   `SHA256SUMS` from the final asset list. Legacy releases are signed first
+   with **Sign an existing release** (provenance is marked
+   `retroactive: true`);
 3. successful promotion dispatches `sbom-generate.yml` in verify-only mode and
    `mirror-attest.yml`, which creates GitHub artifact attestations for the
    public assets.
@@ -118,5 +119,6 @@ sha256sum -c codex-BINARIES-SHA256SUMS
 
 The public `SHA256SUMS` is a superset that also covers SBOMs, notices, the
 `SIGNATURE-STATUS` file and the signature files themselves. A component listed
-as `unsigned` in `SIGNATURE-STATUS` is a legacy release and requires an explicit
-`allow_unsigned=true` at promotion.
+as `unsigned` in `SIGNATURE-STATUS` is refused at promotion; sign it first with
+**Sign an existing release** (or rebuild it) and rerun the promotion. There is
+no unsigned override.
