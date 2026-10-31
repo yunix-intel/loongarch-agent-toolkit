@@ -176,9 +176,10 @@ signature_status() {
 }
 
 verify_signatures() {
-    local dir=$1 label=$2 key=${3:-$ROOT/release-pubkey.pem}
+    local dir=$1 label=$2 key=${3:-$ROOT/release-pubkey.pem} repo=${4:-}
     if [ -f "$dir/BINARIES-SHA256SUMS.sig" ] || [ -f "$dir/provenance.json.sig" ]; then
-        PUBKEY="$key" bash "$ROOT/scripts/verify-release-signature.sh" "$dir"
+        PUBKEY="$key" EXPECTED_TAG="$label" EXPECTED_REPO="$repo" \
+            bash "$ROOT/scripts/verify-release-signature.sh" "$dir"
     else
         warn "no signed manifest for $label (older release)"
     fi
@@ -214,9 +215,9 @@ for name in BINARIES-SHA256SUMS BINARIES-SHA256SUMS.sig provenance.json provenan
     optional_release_asset "$CC_REPO" "$CC_TAG" "$TMP/cc-switch" "$name"
 done
 
-verify_signatures "$TMP/codex" "$CODEX_TAG"
-verify_signatures "$TMP/zcode" "$ZCODE_TAG"
-verify_signatures "$TMP/cc-switch" "$CC_TAG" "$ROOT/release-pubkey-ccswitch.pem"
+verify_signatures "$TMP/codex" "$CODEX_TAG" "$ROOT/release-pubkey.pem" "$BUILDS_REPO"
+verify_signatures "$TMP/zcode" "$ZCODE_TAG" "$ROOT/release-pubkey.pem" "$BUILDS_REPO"
+verify_signatures "$TMP/cc-switch" "$CC_TAG" "$ROOT/release-pubkey-ccswitch.pem" "$CC_REPO"
 
 verify_checksums "$TMP/codex" "$BUILDS_REPO" "$CODEX_TAG"
 verify_checksums "$TMP/zcode" "$BUILDS_REPO" "$ZCODE_TAG"
@@ -269,9 +270,9 @@ prefix_metadata "$TMP/zcode" zcode
 prefix_metadata "$TMP/cc-switch" cc-switch
 
 ensure_public_release
-upload_public "$TMP/codex" "$TMP/codex/SHA256SUMS" codex
-upload_public "$TMP/zcode" "$TMP/zcode/SHA256SUMS" zcode
-upload_public "$TMP/cc-switch" "$TMP/cc-switch/SHA256SUMS" cc-switch
+upload_public "$TMP/codex" "$TMP/codex/codex-BINARIES-SHA256SUMS" codex
+upload_public "$TMP/zcode" "$TMP/zcode/zcode-BINARIES-SHA256SUMS" zcode
+upload_public "$TMP/cc-switch" "$TMP/cc-switch/cc-switch-BINARIES-SHA256SUMS" cc-switch
 upload_meta "$TMP/meta"
 
 GH_TOKEN="$PUBLIC_TOKEN" bash "$ROOT/scripts/refresh-release-checksums.sh" \
