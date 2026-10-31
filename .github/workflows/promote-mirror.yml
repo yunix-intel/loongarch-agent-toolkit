@@ -16,11 +16,6 @@ on:
         required: true
         type: boolean
         default: true
-      allow_unsigned:
-        description: 'Allow publishing components without signatures (reviewed legacy only)'
-        required: true
-        type: boolean
-        default: false
 
 permissions:
   contents: write
@@ -54,7 +49,6 @@ jobs:
           AUTO_ALIGN_TOKEN: ${{ secrets.AUTO_ALIGN_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DRY_RUN: ${{ inputs.dry_run }}
-          ALLOW_UNSIGNED_INPUT: ${{ inputs.allow_unsigned }}
         run: |
           set -euo pipefail
           if [ "$DRY_RUN" = "true" ]; then
@@ -62,12 +56,7 @@ jobs:
           else
             MODE=promote
           fi
-          if [ "$ALLOW_UNSIGNED_INPUT" = "true" ]; then
-            ALLOW_UNSIGNED=1
-          else
-            ALLOW_UNSIGNED=0
-          fi
-          export MODE ALLOW_UNSIGNED
+          export MODE
           bash scripts/mirror-agent-assets.sh
 
       - name: Run post-promotion verification and attestation

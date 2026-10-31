@@ -22,7 +22,6 @@ PUBLIC_TOKEN=''
 if [ "$MODE" = promote ]; then
     PUBLIC_TOKEN=${GITHUB_TOKEN:?GITHUB_TOKEN is required for promote}
 fi
-ALLOW_UNSIGNED=${ALLOW_UNSIGNED:-0}
 
 BUILDS_REPO=yunix-intel/loongarch-agent-builds
 CC_REPO=yunix-intel/cc-switch-loongarch
@@ -236,11 +235,11 @@ python3 -I "$ROOT/scripts/generate-mirror-sbom.py" \
     "$TMP/codex" "$TMP/zcode" "$TMP/cc-switch"
 
 unsigned=$(grep -c ' unsigned$' "$TMP/meta/SIGNATURE-STATUS" || true)
-if [ "$unsigned" -gt 0 ] && [ "$ALLOW_UNSIGNED" != "1" ]; then
+if [ "$unsigned" -gt 0 ]; then
     if [ "$MODE" = promote ]; then
-        die "unsigned components present; set ALLOW_UNSIGNED=1 only for a reviewed legacy release"
+        die "unsigned components present; sign them before promoting"
     fi
-    warn "unsigned components present; promote will require ALLOW_UNSIGNED=1"
+    warn "unsigned components present; promotion will refuse until they are signed"
 fi
 
 if [ "$MODE" = check ]; then
