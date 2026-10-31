@@ -1783,8 +1783,27 @@ func loadOrCreateWebToken(p *Paths) (string, error) {
 		return v, nil
 	}
 	path := webTokenPath(p)
-	if data, err := os.ReadFile(path); err == nil {
-		_ = os.Chmod(path, 0600)
+	if st, err := os.Lstat(path); err == nil {
+		if st.Mode()&os.ModeSymlink != 0 {
+			return "", fmt.Errorf("%s 是符号链接，拒绝使用", path)
+		}
+		f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+		if err != nil {
+			return "", err
+		}
+		data, rerr := io.ReadAll(f)
+		if rerr == nil {
+			if cerr := f.Chmod(0600); cerr != nil {
+				rerr = cerr
+			}
+		}
+		closeErr := f.Close()
+		if rerr == nil {
+			rerr = closeErr
+		}
+		if rerr != nil {
+			return "", rerr
+		}
 		if v := strings.TrimSpace(string(data)); len(v) >= 16 {
 			return v, nil
 		}

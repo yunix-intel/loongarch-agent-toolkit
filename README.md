@@ -212,7 +212,7 @@ overrides the install prefix. The system Node is untouched.
 
 ```sh
 # 默认读取 install/versions.env 的 source 版本/URL/SHA256
-# （0.164.0，asset 668589231，SHA256 55b9bbcc…a75e09）。
+# （0.164.0，SHA256 55b9bbcc…a75e09）。
 read -r -s -p 'GitHub token: ' CODEX_SOURCE_TOKEN; echo
 export CODEX_SOURCE_TOKEN
 sudo -E CODEX_CHANNEL=source ./install/install-loongarch-agents.sh

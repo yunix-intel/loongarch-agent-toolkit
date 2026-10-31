@@ -116,9 +116,39 @@ ensure_public_release() {
 }
 
 upload_public() {
-    local dir=$1
-    mapfile -t files < <(find "$dir" -maxdepth 1 -type f ! -name 'SHA256SUMS*' -print)
+    local dir=$1 manifest=$2 name=$3
+    local manifest_names="$TMP/manifest-names.$$" files=() f base
+    [ -f "$manifest" ] || die "missing manifest $manifest"
+    awk '{n=$2; sub(/^\*/, "", n); print n}' "$manifest" | sort -u > "$manifest_names"
+    while IFS= read -r -d '' f; do
+        base=$(basename "$f")
+        case "$base" in
+            SHA256SUMS*) continue ;;
+            BINARIES-SHA256SUMS|BINARIES-SHA256SUMS.sig|provenance.json|provenance.json.sig) ;;
+            codex-BINARIES-SHA256SUMS|codex-BINARIES-SHA256SUMS.sig|codex-provenance.json|codex-provenance.json.sig) ;;
+            zcode-BINARIES-SHA256SUMS|zcode-BINARIES-SHA256SUMS.sig|zcode-provenance.json|zcode-provenance.json.sig) ;;
+            cc-switch-BINARIES-SHA256SUMS|cc-switch-BINARIES-SHA256SUMS.sig|cc-switch-provenance.json|cc-switch-provenance.json.sig) ;;
+            SBOM-codex.spdx.json|SBOM-zcode.spdx.json|SBOM-cc-switch.spdx.json) ;;
+            *)
+                if ! grep -Fxq "$base" "$manifest_names"; then
+                    rm -f "$manifest_names"
+                    die "unexpected $name asset not in manifest: $base"
+                fi
+                ;;
+        esac
+        files+=("$f")
+    done < <(find "$dir" -maxdepth 1 -type f -print0)
+    rm -f "$manifest_names"
     [ "${#files[@]}" -gt 0 ] || die "no assets in $dir"
+    GH_TOKEN="$PUBLIC_TOKEN" gh release upload "$MIRROR_TAG" \
+        "${files[@]}" --repo "$MIRROR_REPO" --clobber
+}
+
+upload_meta() {
+    local dir=$1
+    local files=()
+    mapfile -t files < <(find "$dir" -maxdepth 1 -type f ! -name 'SHA256SUMS*' -print)
+    [ "${#files[@]}" -gt 0 ] || die "no meta assets in $dir"
     GH_TOKEN="$PUBLIC_TOKEN" gh release upload "$MIRROR_TAG" \
         "${files[@]}" --repo "$MIRROR_REPO" --clobber
 }
@@ -240,10 +270,10 @@ prefix_metadata "$TMP/zcode" zcode
 prefix_metadata "$TMP/cc-switch" cc-switch
 
 ensure_public_release
-upload_public "$TMP/codex"
-upload_public "$TMP/zcode"
-upload_public "$TMP/cc-switch"
-upload_public "$TMP/meta"
+upload_public "$TMP/codex" "$TMP/codex/SHA256SUMS" codex
+upload_public "$TMP/zcode" "$TMP/zcode/SHA256SUMS" zcode
+upload_public "$TMP/cc-switch" "$TMP/cc-switch/SHA256SUMS" cc-switch
+upload_meta "$TMP/meta"
 
 GH_TOKEN="$PUBLIC_TOKEN" bash "$ROOT/scripts/refresh-release-checksums.sh" \
     "$MIRROR_REPO" "$MIRROR_TAG"
