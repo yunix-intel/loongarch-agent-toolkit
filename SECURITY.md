@@ -121,3 +121,11 @@ The public `SHA256SUMS` is a superset that also covers SBOMs, notices, the
 `SIGNATURE-STATUS` file and the signature files themselves. A component listed
 as `unsigned` in `SIGNATURE-STATUS` is refused at promotion; rebuild it so the
 build's sign job signs it. There is no unsigned override.
+
+The public mirror uses one rolling tag (`agent-binaries`) so installers can
+resolve a stable URL. Its assets and `SHA256SUMS` are therefore mutable by
+design, and GitHub's immutable-release setting is intentionally not enabled.
+Integrity comes from the per-component signed manifests and provenance, not
+from tag immutability: every promotion replaces an asset, refreshes the public
+superset, and re-runs SBOM verification and attestation. Verify the component
+signature before trusting a newly promoted binary.
