@@ -132,7 +132,7 @@ if ! "$NPM" install -g \
     --prefix "$CLAUDE_CODE_PREFIX" \
     --registry "$CLAUDE_CODE_NPM_REGISTRY" \
     --fetch-retries 3 \
-    --no-audit --no-fund \
+    --no-audit --no-fund --ignore-scripts \
     "$PKG_SRC"; then
     restore_prefix
     die "npm install failed for $PKG_SRC"

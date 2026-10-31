@@ -8,13 +8,10 @@ on:
       - "README.md"
       - ".github/scripts/**"
       - ".github/workflows/ccswitch-lite.yml"
+  # Always run on pull requests so these jobs can be required checks; path
+  # filters would leave docs-only PRs waiting forever for a check that never
+  # starts.
   pull_request:
-    paths:
-      - "ccswitch-lite/**"
-      - "install/**"
-      - "README.md"
-      - ".github/scripts/**"
-      - ".github/workflows/ccswitch-lite.yml"
 
 permissions:
   contents: read
