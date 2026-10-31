@@ -194,7 +194,25 @@ trap cleanup EXIT HUP INT TERM
 check_tar_links() {
     link_archive=$1
     link_base=$(realpath -m "$2")
-    while IFS=$'\t' read -r link_member link_target; do
+    link_listing="$TMP/tar-listing.$$"
+    link_pairs="$TMP/tar-links.$$"
+    tar -tvf "$link_archive" > "$link_listing" \
+        || die "cannot list archive $link_archive"
+    awk '
+        /^[lh]/ {
+            if ((i = index($0, " -> ")) > 0) {
+                left = substr($0, 1, i - 1)
+                target = substr($0, i + 4)
+            } else if ((i = index($0, " link to ")) > 0) {
+                left = substr($0, 1, i - 1)
+                target = substr($0, i + 9)
+            } else next
+            n = split(left, fields, " ")
+            print fields[n]
+            print target
+        }
+    ' "$link_listing" > "$link_pairs"
+    while IFS= read -r link_member && IFS= read -r link_target; do
         [ -n "$link_member" ] || continue
         case "$link_target" in
             /*) die "archive $link_archive contains an absolute link target: $link_member -> $link_target" ;;
@@ -205,18 +223,8 @@ check_tar_links() {
             "$link_base"|"$link_base"/*) ;;
             *) die "archive $link_archive link escapes the extraction root: $link_member -> $link_target" ;;
         esac
-    done < <(tar -tvf "$link_archive" | awk '
-        /^[lh]/ {
-            if ((i = index($0, " -> ")) > 0) {
-                left = substr($0, 1, i - 1)
-                target = substr($0, i + 4)
-            } else if ((i = index($0, " link to ")) > 0) {
-                left = substr($0, 1, i - 1)
-                target = substr($0, i + 9)
-            } else next
-            n = split(left, fields, " ")
-            print fields[n] "\t" target
-        }')
+    done < "$link_pairs"
+    rm -f "$link_listing" "$link_pairs"
 }
 
 NODE_TARBALL=$(basename "$NODE_URL")
