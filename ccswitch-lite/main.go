@@ -1214,9 +1214,15 @@ func restoreAll(p *Paths, st *Store) (*report, error) {
 		if obj, _, err := readJSONObject(p.CodexAuth); err == nil {
 			current, has := obj["OPENAI_API_KEY"]
 			currentStr, _ := current.(string)
-			owned := st.Applied.AuthKeySHA256 == ""
-			if !owned {
-				owned = sha256Hex(currentStr) == st.Applied.AuthKeySHA256
+			// Only touch the key if it is still the one this tool wrote.
+			// Stores predating AuthKeySHA256 fall back to comparing against
+			// the provider's current key (same migration as apply); a rotated
+			// key is never treated as ours, so restore cannot clobber it.
+			owned := false
+			if st.Applied.AuthKeySHA256 != "" {
+				owned = currentStr != "" && sha256Hex(currentStr) == st.Applied.AuthKeySHA256
+			} else if prev := st.find(st.Applied.Provider); prev != nil && currentStr != "" {
+				owned = prev.APIKey == currentStr
 			}
 			switch {
 			case !owned:
