@@ -384,7 +384,12 @@ codex_download() {
             token=${CODEX_SOURCE_TOKEN:-${GITHUB_TOKEN:-}}
             ;;
         *)
-            token=${CODEX_SOURCE_TOKEN:-}
+            # Never send a token to a non-GitHub host. Fail closed so a
+            # misconfigured URL cannot silently leak CODEX_SOURCE_TOKEN.
+            if [ -n "${CODEX_SOURCE_TOKEN:-}" ]; then
+                die "CODEX_SOURCE_TOKEN is set but the URL is not api.github.com/github.com; refusing to send the token to $url"
+            fi
+            token=''
             ;;
     esac
     if [ -n "$token" ]; then

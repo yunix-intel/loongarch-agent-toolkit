@@ -90,7 +90,25 @@ need xz
 need sha256sum
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/zcode-install.XXXXXX")
-cleanup() { rm -rf "$TMP"; }
+ZCODE_ROLLBACK=''
+ZCODE_CREATED=0
+ZCODE_DEST=''
+cleanup() {
+    rc=$?
+    if [ "$rc" -ne 0 ] && [ -n "$ZCODE_DEST" ]; then
+        if [ -n "$ZCODE_ROLLBACK" ] && [ -e "$ZCODE_ROLLBACK" ]; then
+            rm -rf "$ZCODE_DEST"
+            if mv "$ZCODE_ROLLBACK" "$ZCODE_DEST"; then
+                warn "restored previous ZCode install from $ZCODE_ROLLBACK"
+            else
+                warn "failed to restore ZCode install from $ZCODE_ROLLBACK"
+            fi
+        elif [ "$ZCODE_CREATED" = "1" ]; then
+            rm -rf "$ZCODE_DEST"
+        fi
+    fi
+    rm -rf "$TMP"
+}
 trap cleanup EXIT HUP INT TERM
 
 download() {
@@ -182,12 +200,15 @@ install_cli() {
         || die "CLI archive build tag does not match $ZCODE_VERSION"
 
     dest="$ZCODE_PREFIX/zcode-${ZCODE_VERSION#v}"
+    ZCODE_DEST="$dest"
     if [ -e "$dest" ]; then
         backup="$dest.bak.$(date +%Y%m%d-%H%M%S)"
         log "moving existing $dest to $backup"
         mv "$dest" "$backup"
+        ZCODE_ROLLBACK="$backup"
     fi
     mkdir -p "$ZCODE_PREFIX"
+    ZCODE_CREATED=1
     cp -a "$cli_root" "$dest"
     if [ -L "$dest/bin/zcode.mjs" ]; then
         die "installed CLI entry is a symlink"
