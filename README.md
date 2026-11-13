@@ -190,13 +190,13 @@ overrides the install prefix. The system Node is untouched.
 | 工具 | selected | 说明 |
 | --- | --- | --- |
 | Node.js | `22.23.3` | ABI2.0 运行时，来自 `loong64/node` |
-| Codex | `0.164.0` | 龙芯 loong64 可用最新版（非上游 latest） |
-| Codex (source) | `0.164.0` | 私有 builds 仓库的 LoongArch 源码构建（可选通道） |
+| Codex | `0.167.0` | 龙芯 loong64 可用最新版（非上游 latest） |
+| Codex (source) | `0.167.0` | 私有 builds 仓库的 LoongArch 源码构建（可选通道） |
 | OpenCode | `1.19.0` | `opencode-linux-loong64` 最新版 |
-| DSH | `0.2.1-rc.5` | Loongnix registry 最新版 |
+| DSH | `0.2.2-rc.1` | Loongnix registry 最新版 |
 | Claude Code | `2.1.112` | 最后一个 npm tarball 仍带 `cli.js` 的版本 |
-| ZCode | `v3.17.1` | builds 仓库中资产齐全的最新 release（tag 仅作 upstream） |
-| cc-switch | `v4.0.21` | 私有 builds 仓库中最新的 loong64 deb release |
+| ZCode | `v3.17.2` | builds 仓库中资产齐全的最新 release（tag 仅作 upstream） |
+| cc-switch | `v4.0.28` | 私有 builds 仓库中最新的 loong64 deb release |
 <!-- agent-versions:end -->
 
 `selected` 的含义是“当前龙芯上可用的最新版”，不一定是上游 latest。版本
