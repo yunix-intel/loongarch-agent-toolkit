@@ -79,13 +79,13 @@ manifest_get() {
 NODE_VERSION_DEFAULT=22.23.3
 NODE_SHA256_DEFAULT=bbf4ecadfb5dcfe8420998f4539b927edbaea92c2a5f60057317be2fe41ad654
 CODEX_CHANNEL_DEFAULT=npm
-CODEX_VERSION_DEFAULT=0.164.0
-CODEX_SOURCE_VERSION_DEFAULT=0.164.0
-CODEX_SOURCE_URL_DEFAULT=https://github.com/yunix-intel/loongarch-agent-toolkit/releases/download/agent-binaries/codex-rust-v0.164.0-loongarch64.tar.gz
-CODEX_SOURCE_SHA256_DEFAULT=55b9bbcc9f51ba528e9d7fcbc9e9f085ea7a67c13f95c858c75cee0640a75e09
+CODEX_VERSION_DEFAULT=0.167.0
+CODEX_SOURCE_VERSION_DEFAULT=0.167.0
+CODEX_SOURCE_URL_DEFAULT=https://github.com/yunix-intel/loongarch-agent-toolkit/releases/download/agent-binaries/codex-rust-v0.167.0-loongarch64.tar.gz
+CODEX_SOURCE_SHA256_DEFAULT=2898fd45cd411a714a12dd97c65871e7614975d411f60397bff8117dc24e0ed0
 CODEX_LINK_DEFAULT_DEFAULT=0
 OPENCODE_VERSION_DEFAULT=1.19.0
-DSH_VERSION_DEFAULT=0.2.1-rc.5
+DSH_VERSION_DEFAULT=0.2.2-rc.1
 # END VERSION FALLBACKS
 
 [ "$(id -u)" -eq 0 ] || die "run as root: sudo $0"
