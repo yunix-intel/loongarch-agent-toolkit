@@ -103,15 +103,19 @@ cleanup_tmp() {
         # Idempotent: explicit error paths may already have restored it.
         restore_prefix
     fi
-    if [ "$rc" -ne 0 ] && [ -n "$WRAPPER_BACKUPS" ]; then
+    if [ -n "$WRAPPER_BACKUPS" ]; then
         while IFS='|' read -r wb_path wb_backup; do
             [ -n "$wb_path" ] || continue
-            if [ -n "$wb_backup" ] && [ -e "$wb_backup" ]; then
-                rm -f "$wb_path"
-                mv -f "$wb_backup" "$wb_path" 2>/dev/null \
-                    || warn "failed to restore wrapper $wb_path"
+            if [ "$rc" -ne 0 ]; then
+                if [ -n "$wb_backup" ] && [ -e "$wb_backup" ]; then
+                    rm -f "$wb_path"
+                    mv -f "$wb_backup" "$wb_path" 2>/dev/null \
+                        || warn "failed to restore wrapper $wb_path"
+                else
+                    rm -f "$wb_path"
+                fi
             else
-                rm -f "$wb_path"
+                [ -z "$wb_backup" ] || rm -f "$wb_backup"
             fi
         done <<EOF
 $WRAPPER_BACKUPS
