@@ -1215,14 +1215,14 @@ func restoreAll(p *Paths, st *Store) (*report, error) {
 			current, has := obj["OPENAI_API_KEY"]
 			currentStr, _ := current.(string)
 			// Only touch the key if it is still the one this tool wrote.
-			// Stores predating AuthKeySHA256 fall back to comparing against
-			// the provider's current key (same migration as apply); a rotated
-			// key is never treated as ours, so restore cannot clobber it.
+			// Legacy stores have no hash; without that evidence, assume the
+			// key is not ours and leave it alone. Comparing against the
+			// provider's current key cannot distinguish "we wrote this" from
+			// "the user rotated both to the same new value" and would delete
+			// the user's key.
 			owned := false
 			if st.Applied.AuthKeySHA256 != "" {
 				owned = currentStr != "" && sha256Hex(currentStr) == st.Applied.AuthKeySHA256
-			} else if prev := st.find(st.Applied.Provider); prev != nil && currentStr != "" {
-				owned = prev.APIKey == currentStr
 			}
 			switch {
 			case !owned:

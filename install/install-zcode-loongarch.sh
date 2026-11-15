@@ -93,6 +93,26 @@ TMP=$(mktemp -d "${TMPDIR:-/tmp}/zcode-install.XXXXXX")
 ZCODE_ROLLBACK=''
 ZCODE_CREATED=0
 ZCODE_DEST=''
+WRAPPER_BACKUPS=''
+backup_wrapper() {
+    bw_path=$1
+    bw_backup="$bw_path.bak.$$"
+    if [ -e "$bw_path" ] || [ -L "$bw_path" ]; then
+        cp -P -p "$bw_path" "$bw_backup" || die "cannot back up $bw_path"
+        WRAPPER_BACKUPS="$WRAPPER_BACKUPS$bw_path|$bw_backup
+"
+    else
+        WRAPPER_BACKUPS="$WRAPPER_BACKUPS$bw_path|
+"
+    fi
+}
+write_wrapper() {
+    ww_path=$1
+    ww_tmp="$ww_path.tmp.$$"
+    cat > "$ww_tmp" || die "cannot write $ww_tmp"
+    chmod 0755 "$ww_tmp" || die "cannot chmod $ww_tmp"
+    mv -f "$ww_tmp" "$ww_path" || die "cannot install $ww_path"
+}
 cleanup() {
     rc=$?
     if [ "$rc" -ne 0 ] && [ -n "$ZCODE_DEST" ]; then
@@ -106,6 +126,27 @@ cleanup() {
         elif [ "$ZCODE_CREATED" = "1" ]; then
             rm -rf "$ZCODE_DEST"
         fi
+    fi
+    if [ -n "$WRAPPER_BACKUPS" ]; then
+        while IFS='|' read -r wb_path wb_backup; do
+            [ -n "$wb_path" ] || continue
+            if [ "$rc" -ne 0 ]; then
+                if [ -n "$wb_backup" ] && [ -e "$wb_backup" ]; then
+                    rm -f "$wb_path"
+                    if mv -f "$wb_backup" "$wb_path"; then
+                        warn "restored previous wrapper $wb_path"
+                    else
+                        warn "failed to restore wrapper $wb_path from $wb_backup"
+                    fi
+                else
+                    rm -f "$wb_path"
+                fi
+            else
+                [ -z "$wb_backup" ] || rm -f "$wb_backup"
+            fi
+        done <<EOF
+$WRAPPER_BACKUPS
+EOF
     fi
     rm -rf "$TMP"
 }
@@ -224,13 +265,14 @@ install_cli() {
 
     mkdir -p "$BIN_DIR"
     wrapper="$BIN_DIR/zcode-${ZCODE_VERSION#v}"
-    cat > "$wrapper" <<EOF
+    backup_wrapper "$wrapper"
+    write_wrapper "$wrapper" <<EOF
 #!/bin/sh
 exec "$node_bin" "$dest/bin/zcode.mjs" "\$@"
 EOF
-    chmod 0755 "$wrapper"
     log "installed $wrapper -> $dest (Node $("$node_bin" -v))"
     if [ "$ZCODE_LINK_DEFAULT" = "1" ]; then
+        backup_wrapper "$BIN_DIR/zcode"
         ln -sf "$wrapper" "$BIN_DIR/zcode"
         log "linked $BIN_DIR/zcode -> $wrapper"
     else
