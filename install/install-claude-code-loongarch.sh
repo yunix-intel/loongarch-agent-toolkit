@@ -66,6 +66,18 @@ need mktemp
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/claude-code.XXXXXX")
 WRAPPER_BACKUPS=''
+PREFIX_TOUCHED=0
+PREFIX_RESTORED=0
+restore_prefix() {
+    [ "$PREFIX_TOUCHED" = "1" ] || return 0
+    [ "$PREFIX_RESTORED" = "0" ] || return 0
+    PREFIX_RESTORED=1
+    rm -rf "$CLAUDE_CODE_PREFIX"
+    if [ -n "${BACKUP:-}" ] && [ -e "$BACKUP" ]; then
+        mv "$BACKUP" "$CLAUDE_CODE_PREFIX"
+        warn "restored previous Claude Code installation from $BACKUP"
+    fi
+}
 backup_wrapper() {
     bw_path=$1
     bw_backup="$bw_path.bak.$$"
@@ -87,6 +99,10 @@ write_wrapper() {
 }
 cleanup_tmp() {
     rc=$?
+    if [ "$rc" -ne 0 ]; then
+        # Idempotent: explicit error paths may already have restored it.
+        restore_prefix
+    fi
     if [ "$rc" -ne 0 ] && [ -n "$WRAPPER_BACKUPS" ]; then
         while IFS='|' read -r wb_path wb_backup; do
             [ -n "$wb_path" ] || continue
@@ -124,20 +140,13 @@ PATH="$NODE_DIR:$PATH"
 export PATH
 
 log "installing @anthropic-ai/claude-code@$CLAUDE_CODE_VERSION into $CLAUDE_CODE_PREFIX"
+PREFIX_TOUCHED=1
 if [ -e "$CLAUDE_CODE_PREFIX" ]; then
     BACKUP="$CLAUDE_CODE_PREFIX.bak.$(date +%Y%m%d-%H%M%S)"
     log "moving existing $CLAUDE_CODE_PREFIX to $BACKUP"
     mv "$CLAUDE_CODE_PREFIX" "$BACKUP"
 fi
 mkdir -p "$CLAUDE_CODE_PREFIX"
-
-restore_prefix() {
-    rm -rf "$CLAUDE_CODE_PREFIX"
-    if [ -n "${BACKUP:-}" ] && [ -e "$BACKUP" ]; then
-        mv "$BACKUP" "$CLAUDE_CODE_PREFIX"
-        warn "restored previous Claude Code installation from $BACKUP"
-    fi
-}
 
 PKG_SRC="@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
 if [ -n "$CLAUDE_CODE_NPM_INTEGRITY" ]; then
