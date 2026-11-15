@@ -220,6 +220,16 @@ done <<EOF
 $readme_rows
 EOF
 
+# --- 4. README source example ----------------------------------------------
+# The example must name the same artifact the manifest pins; otherwise users
+# following it download a release that no longer exists.
+readme_codex_refs=$(grep -o 'codex-rust-v[0-9][0-9.]*-loongarch64\.tar\.gz' "$README" || true)
+expected_codex_ref="codex-rust-v$(manifest_value CODEX_SOURCE_VERSION)-loongarch64.tar.gz"
+for ref in $readme_codex_refs; do
+    [ "$ref" = "$expected_codex_ref" ] \
+        || fail_msg "README references stale source asset: $ref (expected $expected_codex_ref)"
+done
+
 if [ "$fail" -ne 0 ]; then
     printf '\nVersion pins are out of sync. Update versions.env, the installer\n' >&2
     printf 'fallback block and the README agent-versions table together.\n' >&2

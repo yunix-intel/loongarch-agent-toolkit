@@ -319,6 +319,39 @@ if fails: sys.exit(1)
 print("FINAL RESTORE ASSERTIONS PASSED")
 PY
 
+echo "== legacy store restore (no auth key hash) =="
+python3 - <<'PY'
+import json, os
+home = os.environ["HOME"]
+cfg = os.path.join(home, ".config", "ccswitch-lite")
+os.makedirs(cfg, exist_ok=True)
+store = {
+    "current": "legacy",
+    "providers": [{"name": "legacy", "apiKey": "user-new", "apiFormat": "openai"}],
+    "applied": {
+        "provider": "legacy",
+        "wroteAuthKey": True,
+        "codexAuthHadKey": True,
+        "codexAuthBackupSet": True,
+    },
+}
+with open(os.path.join(cfg, "providers.json"), "w", encoding="utf-8") as f:
+    json.dump(store, f)
+with open(os.path.join(home, ".codex/auth.json"), "w", encoding="utf-8") as f:
+    json.dump({"OPENAI_API_KEY": "user-new"}, f)
+PY
+"$BIN" restore >/dev/null
+python3 - <<'PY'
+import json, os, sys
+home = os.environ["HOME"]
+with open(os.path.join(home, ".codex/auth.json"), encoding="utf-8") as f:
+    auth = json.load(f)
+ok = auth.get("OPENAI_API_KEY") == "user-new"
+print(("PASS " if ok else "FAIL ") +
+      "legacy store: key rotated by the user is preserved on restore")
+sys.exit(0 if ok else 1)
+PY
+
 echo "== malformed input safety =="
 export HOME="$BASE/home2"; export XDG_CONFIG_HOME="$HOME/.config"
 mkdir -p "$HOME/.claude" "$HOME/.codex"

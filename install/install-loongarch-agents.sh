@@ -173,6 +173,28 @@ NODE_CREATED=0
 CODEX_ROLLBACK=''
 CODEX_CREATED=0
 CODEX_DEST=''
+WRAPPER_BACKUPS=''
+backup_wrapper() {
+    bw_path=$1
+    bw_backup="$bw_path.bak.$$"
+    if [ -e "$bw_path" ] || [ -L "$bw_path" ]; then
+        cp -P -p "$bw_path" "$bw_backup" || die "cannot back up $bw_path"
+        WRAPPER_BACKUPS="$WRAPPER_BACKUPS$bw_path|$bw_backup
+"
+    else
+        WRAPPER_BACKUPS="$WRAPPER_BACKUPS$bw_path|
+"
+    fi
+}
+# Write a wrapper through a temporary file so a failed write cannot truncate
+# the existing one; backup_wrapper makes the replacement reversible.
+write_wrapper() {
+    ww_path=$1
+    ww_tmp="$ww_path.tmp.$$"
+    cat > "$ww_tmp" || die "cannot write $ww_tmp"
+    chmod 0755 "$ww_tmp" || die "cannot chmod $ww_tmp"
+    mv -f "$ww_tmp" "$ww_path" || die "cannot install $ww_path"
+}
 cleanup() {
     rc=$?
     if [ "$rc" -ne 0 ]; then
@@ -199,22 +221,50 @@ cleanup() {
             fi
         fi
     fi
+    if [ -n "$WRAPPER_BACKUPS" ]; then
+        while IFS='|' read -r wb_path wb_backup; do
+            [ -n "$wb_path" ] || continue
+            if [ "$rc" -ne 0 ]; then
+                if [ -n "$wb_backup" ] && [ -e "$wb_backup" ]; then
+                    rm -f "$wb_path"
+                    if mv -f "$wb_backup" "$wb_path"; then
+                        warn "restored previous wrapper $wb_path"
+                    else
+                        warn "failed to restore wrapper $wb_path from $wb_backup"
+                    fi
+                else
+                    rm -f "$wb_path"
+                fi
+            else
+                [ -z "$wb_backup" ] || rm -f "$wb_backup"
+            fi
+        done <<EOF
+$WRAPPER_BACKUPS
+EOF
+    fi
     rm -rf "$TMP"
 }
 trap cleanup EXIT HUP INT TERM
 
-# A link target is relative to the directory containing the link.  Resolve it
-# before deciding whether it escapes the extraction root; a bare ".." is not
-# unsafe if it stays inside (Node ships bin/npm -> ../lib/...).
+# A link target is relative to the directory containing the link (symlinks) or
+# to the archive root (hardlinks).  Validate it after applying the same
+# component stripping as extraction: checking the unstripped member path lets a
+# `top/bin/x -> ../../escape` link resolve inside the pre-strip root but land
+# outside the real extraction root.
 check_tar_links() {
     link_archive=$1
     link_base=$(realpath -m "$2")
+    link_strip=${3:-0}
+    case "$link_strip" in
+        ''|*[!0-9]*) die "invalid strip count for $link_archive: $link_strip" ;;
+    esac
     link_listing="$TMP/tar-listing.$$"
-    link_pairs="$TMP/tar-links.$$"
+    link_records="$TMP/tar-links.$$"
     tar -tvf "$link_archive" > "$link_listing" \
         || die "cannot list archive $link_archive"
-    awk '
+    awk -v strip="$link_strip" '
         /^[lh]/ {
+            kind = substr($0, 1, 1)
             if ((i = index($0, " -> ")) > 0) {
                 left = substr($0, 1, i - 1)
                 target = substr($0, i + 4)
@@ -223,23 +273,43 @@ check_tar_links() {
                 target = substr($0, i + 9)
             } else next
             n = split(left, fields, " ")
-            print fields[n]
-            print target
+            member = fields[n]
+            n = split(member, parts, "/")
+            if (strip >= n) next
+            effective = ""
+            for (i = strip + 1; i <= n; i++)
+                effective = effective (effective == "" ? "" : "/") parts[i]
+            if (kind == "h") {
+                nt = split(target, tparts, "/")
+                if (strip >= nt) next
+                efftarget = ""
+                for (i = strip + 1; i <= nt; i++)
+                    efftarget = efftarget (efftarget == "" ? "" : "/") tparts[i]
+                print effective; print "root"; print efftarget
+            } else {
+                print effective; print "dir"; print target
+            }
         }
-    ' "$link_listing" > "$link_pairs"
-    while IFS= read -r link_member && IFS= read -r link_target; do
+    ' "$link_listing" > "$link_records"
+    # Records are three lines each: member, kind (root|dir), target.
+    while IFS= read -r link_member && IFS= read -r link_kind && IFS= read -r link_target; do
         [ -n "$link_member" ] || continue
         case "$link_target" in
             /*) die "archive $link_archive contains an absolute link target: $link_member -> $link_target" ;;
         esac
-        link_resolved=$(realpath -m "$link_base/$(dirname "$link_member")/$link_target") \
-            || die "cannot resolve link target in $link_archive: $link_member -> $link_target"
+        case "$link_kind" in
+            root) link_resolved=$(realpath -m "$link_base/$link_target") \
+                      || die "cannot resolve link target in $link_archive: $link_member -> $link_target" ;;
+            dir)  link_resolved=$(realpath -m "$link_base/$(dirname "$link_member")/$link_target") \
+                      || die "cannot resolve link target in $link_archive: $link_member -> $link_target" ;;
+            *) die "internal error: unknown link kind in $link_archive" ;;
+        esac
         case "$link_resolved" in
             "$link_base"|"$link_base"/*) ;;
             *) die "archive $link_archive link escapes the extraction root: $link_member -> $link_target" ;;
         esac
-    done < "$link_pairs"
-    rm -f "$link_listing" "$link_pairs"
+    done < "$link_records"
+    rm -f "$link_listing" "$link_records"
 }
 
 NODE_TARBALL=$(basename "$NODE_URL")
@@ -268,7 +338,7 @@ mkdir -p "$TMP/node"
 if tar -tJf "$TMP/$NODE_TARBALL" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
     die "Node archive contains an absolute or parent-traversal path"
 fi
-check_tar_links "$TMP/$NODE_TARBALL" "$TMP/node"
+check_tar_links "$TMP/$NODE_TARBALL" "$TMP/node" 1
 tar -xJf "$TMP/$NODE_TARBALL" -C "$TMP/node" --strip-components=1
 
 [ -x "$TMP/node/bin/node" ] || die "Node install failed: $TMP/node/bin/node missing"
@@ -496,20 +566,20 @@ install_codex_source() {
     [ -x "$installed_bin" ] || die "installed codex binary is not executable: $installed_bin"
 
     mkdir -p "$BIN_DIR"
-    cat > "$BIN_DIR/codex-$version" <<EOF
+    backup_wrapper "$BIN_DIR/codex-$version"
+    write_wrapper "$BIN_DIR/codex-$version" <<EOF
 #!/bin/sh
 # generated by install-loongarch-agents.sh (source channel)
 exec "$installed_bin" "\$@"
 EOF
-    chmod 0755 "$BIN_DIR/codex-$version"
 
     if [ "$CODEX_LINK_DEFAULT" = "1" ]; then
-        cat > "$BIN_DIR/codex" <<EOF
+        backup_wrapper "$BIN_DIR/codex"
+        write_wrapper "$BIN_DIR/codex" <<EOF
 #!/bin/sh
 # generated by install-loongarch-agents.sh (source channel)
 exec "$installed_bin" "\$@"
 EOF
-        chmod 0755 "$BIN_DIR/codex"
     fi
 
     log "installed Codex $version source build at $dest"
@@ -552,29 +622,27 @@ fi
 mkdir -p "$BIN_DIR"
 
 if [ "$CODEX_CHANNEL" = "npm" ]; then
-    cat > "$BIN_DIR/codex" <<EOF
+    backup_wrapper "$BIN_DIR/codex"
+    write_wrapper "$BIN_DIR/codex" <<EOF
 #!/bin/sh
 # generated by install-loongarch-agents.sh (npm channel)
 exec "$NODE_PREFIX/bin/node" "$CODEX_JS" "\$@"
 EOF
 fi
 
-cat > "$BIN_DIR/dsh" <<EOF
+backup_wrapper "$BIN_DIR/dsh"
+write_wrapper "$BIN_DIR/dsh" <<EOF
 #!/bin/sh
 # generated by install-loongarch-agents.sh
 exec "$NODE_PREFIX/bin/node" "$DSH_ENTRY" "\$@"
 EOF
 
-cat > "$BIN_DIR/opencode" <<EOF
+backup_wrapper "$BIN_DIR/opencode"
+write_wrapper "$BIN_DIR/opencode" <<EOF
 #!/bin/sh
 # generated by install-loongarch-agents.sh
 exec "$OPENCODE_BIN" "\$@"
 EOF
-
-chmod 0755 "$BIN_DIR/dsh" "$BIN_DIR/opencode"
-if [ "$CODEX_CHANNEL" = "npm" ]; then
-    chmod 0755 "$BIN_DIR/codex"
-fi
 
 if [ "$CODEX_CHANNEL" = "source" ]; then
     install_codex_source "$CODEX_SOURCE_VERSION" "$CODEX_SOURCE_URL" "$CODEX_SOURCE_SHA256"

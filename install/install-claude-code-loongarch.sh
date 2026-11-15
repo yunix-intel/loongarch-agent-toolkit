@@ -65,7 +65,45 @@ need install
 need mktemp
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/claude-code.XXXXXX")
-trap 'rm -rf "$TMP"' 0 1 2 15
+WRAPPER_BACKUPS=''
+backup_wrapper() {
+    bw_path=$1
+    bw_backup="$bw_path.bak.$$"
+    if [ -e "$bw_path" ] || [ -L "$bw_path" ]; then
+        cp -P -p "$bw_path" "$bw_backup" || die "cannot back up $bw_path"
+        WRAPPER_BACKUPS="$WRAPPER_BACKUPS$bw_path|$bw_backup
+"
+    else
+        WRAPPER_BACKUPS="$WRAPPER_BACKUPS$bw_path|
+"
+    fi
+}
+write_wrapper() {
+    ww_path=$1
+    ww_tmp="$ww_path.tmp.$$"
+    cat > "$ww_tmp" || die "cannot write $ww_tmp"
+    chmod 0755 "$ww_tmp" || die "cannot chmod $ww_tmp"
+    mv -f "$ww_tmp" "$ww_path" || die "cannot install $ww_path"
+}
+cleanup_tmp() {
+    rc=$?
+    if [ "$rc" -ne 0 ] && [ -n "$WRAPPER_BACKUPS" ]; then
+        while IFS='|' read -r wb_path wb_backup; do
+            [ -n "$wb_path" ] || continue
+            if [ -n "$wb_backup" ] && [ -e "$wb_backup" ]; then
+                rm -f "$wb_path"
+                mv -f "$wb_backup" "$wb_path" 2>/dev/null \
+                    || warn "failed to restore wrapper $wb_path"
+            else
+                rm -f "$wb_path"
+            fi
+        done <<EOF
+$WRAPPER_BACKUPS
+EOF
+    fi
+    rm -rf "$TMP"
+}
+trap cleanup_tmp 0 1 2 15
 
 if [ -z "$CLAUDE_CODE_NODE" ]; then
     for candidate in /opt/node26/bin/node /opt/node24/bin/node /opt/node22-abi2/bin/node; do
@@ -153,13 +191,16 @@ else
     wrapper="$BIN_DIR/claude-${CLAUDE_CODE_VERSION}"
 fi
 mkdir -p "$BIN_DIR"
-cat > "$wrapper" <<EOF
+backup_wrapper "$wrapper"
+write_wrapper "$wrapper" <<EOF
 #!/bin/sh
 export USE_BUILTIN_RIPGREP=0
 export DISABLE_AUTOUPDATER=1
 exec "$CLAUDE_CODE_NODE" "$CLI" "\$@"
 EOF
-chmod 0755 "$wrapper"
 log "installed $wrapper -> $CLI (Node $("$CLAUDE_CODE_NODE" -v))"
 
-"$CLAUDE_CODE_NODE" "$CLI" --version
+if ! "$CLAUDE_CODE_NODE" "$CLI" --version; then
+    restore_prefix
+    die "Claude Code smoke test failed"
+fi

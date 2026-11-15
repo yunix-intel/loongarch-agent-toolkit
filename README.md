@@ -179,6 +179,25 @@ The installer:
 - writes `/usr/local/bin/{codex,dsh,opencode}` wrappers (the source channel
   writes `codex-<version>` unless `CODEX_LINK_DEFAULT=1`).
 
+### DSH 隐私说明
+
+`@deepseek-ai/dsh` 默认包含两条独立的会话数据路径，安装器不会修改它们：
+
+1. **DeepSeek 会话日志贡献器**（`dsh-session-log-deepseek`，默认
+   `enabled=true`）：发往 DeepSeek 官方 API 的请求会附带
+   `dsh_session_log`，上传截至当前事件的会话日志前缀（单次最多 8 MiB，
+   后续请求续传）。这条路径只在请求本身发往官方 DeepSeek 端点时生效；
+   使用第三方或本地 provider 时不会附带。
+2. **OTel 会话上传**（`dsh-session-telemetry-otel`，默认
+   `FEEDBACK_ONLY`）：默认不持续上传；当你提交文本反馈、给消息评分、编辑
+   或撤回时，会把截至该事件的完整规范会话日志前缀（含上下文）发送到
+   `https://dsh-otel-collector.deepseeksvc.com/v1/logs`。可用
+   `DSH_TELEMETRY_OTLP_URL` 覆盖端点；把模式设为 `DISABLED` 可关闭
+   OTel 捕获。
+
+安装器只做版本 pin 和完整性校验，不改变上述默认值。不需要这些数据外发
+时，应在安装后通过 DSH 设置关闭对应插件或模式。
+
 [`install/versions.env`](install/versions.env) is the **single source of
 truth** for every pinned version. The installer reads it at runtime, and the
 README table below is generated/checked against it (CI fails on drift).
@@ -213,8 +232,7 @@ overrides the install prefix. The system Node is untouched.
 默认 `codex`。
 
 ```sh
-# 默认读取 install/versions.env 的 source 版本/URL/SHA256
-# （0.164.0，SHA256 55b9bbcc…a75e09）。
+# 默认读取 install/versions.env 的 source 版本/URL/SHA256。
 read -r -s -p 'GitHub token: ' CODEX_SOURCE_TOKEN; echo
 export CODEX_SOURCE_TOKEN
 sudo -E CODEX_CHANNEL=source ./install/install-loongarch-agents.sh
@@ -222,7 +240,7 @@ unset CODEX_SOURCE_TOKEN
 ```
 
 `CODEX_SOURCE_URL` 支持 `http(s)://` 或本地 `.tar.gz`；使用本地归档时再显式
-覆盖为 `CODEX_SOURCE_URL=/path/to/codex-rust-v0.164.0-loongarch64.tar.gz`。
+覆盖为 `CODEX_SOURCE_URL=/path/to/codex-rust-<version>-loongarch64.tar.gz`。
 公共镜像无需 token；如果显式改用私有 GitHub API asset，可设置
 `CODEX_SOURCE_TOKEN`。安装器在解包前校验 SHA-256，并拒绝包含绝对路径、`..`
 或可执行入口 symlink 的条目。
