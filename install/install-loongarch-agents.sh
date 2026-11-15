@@ -260,7 +260,9 @@ check_tar_links() {
     esac
     link_listing="$TMP/tar-listing.$$"
     link_records="$TMP/tar-links.$$"
-    tar -tvf "$link_archive" > "$link_listing" \
+    # Force the C locale: tar localises " -> " / " link to " and a translated
+    # listing would make the parser silently skip every link entry.
+    LC_ALL=C tar -tvf "$link_archive" > "$link_listing" \
         || die "cannot list archive $link_archive"
     awk -v strip="$link_strip" '
         /^[lh]/ {
@@ -280,12 +282,10 @@ check_tar_links() {
             for (i = strip + 1; i <= n; i++)
                 effective = effective (effective == "" ? "" : "/") parts[i]
             if (kind == "h") {
-                nt = split(target, tparts, "/")
-                if (strip >= nt) next
-                efftarget = ""
-                for (i = strip + 1; i <= nt; i++)
-                    efftarget = efftarget (efftarget == "" ? "" : "/") tparts[i]
-                print effective; print "root"; print efftarget
+                # Keep the original target: the shell rejects any ".." and
+                # only then applies the strip count.  Stripping here would
+                # hide a malicious "../escape" behind "escape".
+                print effective; print "root"; print target
             } else {
                 print effective; print "dir"; print target
             }
@@ -298,10 +298,20 @@ check_tar_links() {
             /*) die "archive $link_archive contains an absolute link target: $link_member -> $link_target" ;;
         esac
         case "$link_kind" in
-            root) link_resolved=$(realpath -m "$link_base/$link_target") \
-                      || die "cannot resolve link target in $link_archive: $link_member -> $link_target" ;;
-            dir)  link_resolved=$(realpath -m "$link_base/$(dirname "$link_member")/$link_target") \
-                      || die "cannot resolve link target in $link_archive: $link_member -> $link_target" ;;
+            root)
+                case "$link_target" in
+                    ..|../*|*/../*|*/..)
+                        die "archive $link_archive hardlink target contains ..: $link_member -> $link_target" ;;
+                esac
+                if [ "$link_strip" -gt 0 ]; then
+                    link_target=$(printf '%s' "$link_target" | cut -d/ -f$((link_strip + 1))-)
+                    [ -n "$link_target" ] || continue
+                fi
+                link_resolved=$(realpath -m "$link_base/$link_target") \
+                    || die "cannot resolve link target in $link_archive: $link_member -> $link_target" ;;
+            dir)
+                link_resolved=$(realpath -m "$link_base/$(dirname "$link_member")/$link_target") \
+                    || die "cannot resolve link target in $link_archive: $link_member -> $link_target" ;;
             *) die "internal error: unknown link kind in $link_archive" ;;
         esac
         case "$link_resolved" in
