@@ -169,8 +169,8 @@ sudo ./install/install-loongarch-agents.sh
 The installer:
 
 - detects ABI from ELF `e_flags` (`0x3` = ABI1.0, `0x43` = ABI2.0);
-- downloads Node **22.23.3** from `loong64/node` (not the ABI1.0 Loongnix FTP
-  22.16 tarball) into `/opt/node22-abi2`;
+- downloads Node **24.22.0** from `loong64/node` (not the ABI1.0 Loongnix FTP
+  22.16 tarball) into `/opt/node22-abi2` (the historical prefix name is kept);
 - installs `opencode-ai` and `@deepseek-ai/dsh` at the versions in
   [`install/versions.env`](install/versions.env) from
   `https://registry.loongnix.cn:5873`;
@@ -208,7 +208,7 @@ overrides the install prefix. The system Node is untouched.
 <!-- agent-versions:begin -->
 | 工具 | selected | 说明 |
 | --- | --- | --- |
-| Node.js | `22.23.3` | ABI2.0 运行时，来自 `loong64/node` |
+| Node.js | `24.22.0` | ABI2.0 运行时，来自 `loong64/node`；dsh 0.2.2 要求 Node >=24.9 |
 | Codex | `0.167.0` | 龙芯 loong64 可用最新版（非上游 latest） |
 | Codex (source) | `0.167.0` | 私有 builds 仓库的 LoongArch 源码构建（可选通道） |
 | OpenCode | `1.19.0` | `opencode-linux-loong64` 最新版 |
