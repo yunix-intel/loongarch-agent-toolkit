@@ -599,8 +599,16 @@ if [ "$CODEX_CHANNEL" = "npm" ]; then
     # Codex ships prebuilt optional native packages; do not run its scripts.
     install_pkg "@openai/codex" "$CODEX_VERSION" "$CODEX_NPM_INTEGRITY" 1
 fi
-# OpenCode likewise ships prebuilt optional native packages.
+# OpenCode likewise ships prebuilt optional native packages.  Its postinstall
+# copies the matching platform binary into bin/, so run that one script
+# explicitly after the integrity-checked install instead of enabling every
+# lifecycle script.
 install_pkg "opencode-ai" "$OPENCODE_VERSION" "$OPENCODE_NPM_INTEGRITY" 1
+OPENCODE_ROOT="$NODE_PREFIX/lib/node_modules/opencode-ai"
+if [ -f "$OPENCODE_ROOT/postinstall.mjs" ]; then
+    ( cd "$OPENCODE_ROOT" && "$NODE_PREFIX/bin/node" postinstall.mjs ) \
+        || die "opencode-ai postinstall failed"
+fi
 # dsh currently has no linux-loong64 node-pty prebuild, so npm may build it
 # with node-gyp.  Keep lifecycle scripts enabled and warn early instead.
 for tool in gcc g++ make python3; do
