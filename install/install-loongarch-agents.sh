@@ -14,7 +14,7 @@
 #   * LoongArch ELF e_flags 0x43 = ABI2.0 (OBJ-v1)
 #   * The Node 22.16 tarball on the Loongnix FTP is ABI1.0. dsh's koffi native
 #     addon and the ABI2.0 userspace need the 0x43 build. Use loong64/node
-#     v22.23.3 (or newer) from GitHub instead.
+#     v24.22.0 from GitHub; dsh 0.2.2 also requires Node >=24.9.
 #   * Node < 22.18 has no import.meta.main; dsh's lib/bin.js then exits
 #     silently. This script installs a small shim in that case.
 #
@@ -76,8 +76,8 @@ manifest_get() {
 }
 
 # BEGIN VERSION FALLBACKS -- kept in sync with install/versions.env by CI.
-NODE_VERSION_DEFAULT=22.23.3
-NODE_SHA256_DEFAULT=bbf4ecadfb5dcfe8420998f4539b927edbaea92c2a5f60057317be2fe41ad654
+NODE_VERSION_DEFAULT=24.22.0
+NODE_SHA256_DEFAULT=e8259dc84c90c3ac9b4c00ddf0a6c8d2cce956ee2a62d1a2f811b16a17d7e04c
 CODEX_CHANNEL_DEFAULT=npm
 CODEX_VERSION_DEFAULT=0.167.0
 CODEX_SOURCE_VERSION_DEFAULT=0.167.0
