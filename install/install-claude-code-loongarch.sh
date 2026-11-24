@@ -66,16 +66,24 @@ need mktemp
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/claude-code.XXXXXX")
 WRAPPER_BACKUPS=''
-PREFIX_TOUCHED=0
+PREFIX_MOVED=0
+PREFIX_CREATED=0
 PREFIX_RESTORED=0
 restore_prefix() {
-    [ "$PREFIX_TOUCHED" = "1" ] || return 0
     [ "$PREFIX_RESTORED" = "0" ] || return 0
-    PREFIX_RESTORED=1
-    rm -rf "$CLAUDE_CODE_PREFIX"
-    if [ -n "${BACKUP:-}" ] && [ -e "$BACKUP" ]; then
-        mv "$BACKUP" "$CLAUDE_CODE_PREFIX"
-        warn "restored previous Claude Code installation from $BACKUP"
+    if [ "$PREFIX_MOVED" = "1" ]; then
+        PREFIX_RESTORED=1
+        rm -rf "$CLAUDE_CODE_PREFIX"
+        if [ -n "${BACKUP:-}" ] && [ -e "$BACKUP" ]; then
+            if mv "$BACKUP" "$CLAUDE_CODE_PREFIX"; then
+                warn "restored previous Claude Code installation from $BACKUP"
+            else
+                warn "failed to restore Claude Code from $BACKUP"
+            fi
+        fi
+    elif [ "$PREFIX_CREATED" = "1" ]; then
+        PREFIX_RESTORED=1
+        rm -rf "$CLAUDE_CODE_PREFIX"
     fi
 }
 backup_wrapper() {
@@ -143,14 +151,25 @@ fi
 PATH="$NODE_DIR:$PATH"
 export PATH
 
+if [ -z "$CLAUDE_CODE_NPM_INTEGRITY" ] && [ "${ALLOW_UNVERIFIED_NPM:-0}" != "1" ]; then
+    die "missing CLAUDE_CODE_NPM_INTEGRITY; refusing to install an unverified package (set ALLOW_UNVERIFIED_NPM=1 to override)"
+fi
+
 log "installing @anthropic-ai/claude-code@$CLAUDE_CODE_VERSION into $CLAUDE_CODE_PREFIX"
-PREFIX_TOUCHED=1
 if [ -e "$CLAUDE_CODE_PREFIX" ]; then
     BACKUP="$CLAUDE_CODE_PREFIX.bak.$(date +%Y%m%d-%H%M%S)"
     log "moving existing $CLAUDE_CODE_PREFIX to $BACKUP"
-    mv "$CLAUDE_CODE_PREFIX" "$BACKUP"
+    if ! mv "$CLAUDE_CODE_PREFIX" "$BACKUP"; then
+        die "failed to move $CLAUDE_CODE_PREFIX aside; original left intact"
+    fi
+    PREFIX_MOVED=1
+else
+    PREFIX_CREATED=1
 fi
-mkdir -p "$CLAUDE_CODE_PREFIX"
+if ! mkdir -p "$CLAUDE_CODE_PREFIX"; then
+    restore_prefix
+    die "failed to create $CLAUDE_CODE_PREFIX"
+fi
 
 PKG_SRC="@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
 if [ -n "$CLAUDE_CODE_NPM_INTEGRITY" ]; then

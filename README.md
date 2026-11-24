@@ -257,8 +257,8 @@ sudo -E ./install/install-zcode-loongarch.sh
 
 # 显式覆盖资产（适合其他 mirror/release）
 sudo -E ZCODE_CHANNEL=cli \
-  ZCODE_CLI_URL=https://github.com/yunix-intel/loongarch-agent-toolkit/releases/download/agent-binaries/zcode-cli_3.15.1_loong64.tar.gz \
-  ZCODE_CLI_SHA256=6b070c44b1e9fbd6b0040a8f20e39f03a224242f366584655da7a65b29a44cd0 \
+  ZCODE_CLI_URL=https://github.com/yunix-intel/loongarch-agent-toolkit/releases/download/agent-binaries/zcode-cli_3.17.2_loong64.tar.gz \
+  ZCODE_CLI_SHA256=3b5c544c9aa0f6f78404d9678061969fe8764a21705759d92fef010d0c2a147c \
   ./install/install-zcode-loongarch.sh
 
 # 轻量 Tauri 桌面（捆绑 CLI，依赖系统 Node >= 24）
