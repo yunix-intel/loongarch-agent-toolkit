@@ -1,7 +1,7 @@
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{SocketAddr, TcpStream};
-use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::os::unix::process::CommandExt;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
@@ -31,7 +31,23 @@ fn log(msg: &str) {
         .mode(0o600)
         .custom_flags(libc::O_NOFOLLOW);
     if let Ok(mut f) = opts.open(path) {
+        // O_NOFOLLOW only covers symlinks; make sure an existing regular file
+        // is ours and tighten it, since mode(0600) applies only at creation.
+        let Ok(meta) = f.metadata() else { return };
+        if !meta.is_file() || meta.uid() != unsafe { libc::geteuid() } {
+            return;
+        }
+        let _ = f.set_permissions(std::fs::Permissions::from_mode(0o600));
         let _ = writeln!(f, "{msg}");
+    }
+}
+
+/// Log URLs without userinfo, query or fragment.
+fn redacted_url(url: &Url) -> String {
+    match (url.host_str(), url.port()) {
+        (Some(host), Some(port)) => format!("{}://{}:{}", url.scheme(), host, port),
+        (Some(host), None) => format!("{}://{}", url.scheme(), host),
+        (None, _) => format!("{}://<invalid>", url.scheme()),
     }
 }
 
@@ -193,7 +209,7 @@ fn spawn_backend() -> Result<(ChildHandle, Url), String> {
         match rx.recv_timeout(remaining.min(Duration::from_millis(500))) {
             Ok(line) => {
                 if let Some(url) = parse_local_url(&line) {
-                    log(&format!("[zcode-tauri] detected web URL: {url}"));
+                    log(&format!("[zcode-tauri] detected web URL: {}", redacted_url(&url)));
                     found = Some(url);
                     break;
                 }
@@ -215,9 +231,9 @@ fn spawn_backend() -> Result<(ChildHandle, Url), String> {
     if !wait_tcp(&url, Duration::from_secs(30)) {
         let mut c = child;
         kill_group(pgid, &mut c);
-        return Err(format!("zcode reported {url} but the port never accepted TCP"));
+        return Err(format!("zcode reported {} but the port never accepted TCP", redacted_url(&url)));
     }
-    log(&format!("[zcode-tauri] backend ready at {url}"));
+    log(&format!("[zcode-tauri] backend ready at {}", redacted_url(&url)));
 
     Ok((
         ChildHandle {
@@ -265,14 +281,14 @@ fn main() {
             let started = match attach {
                 Some(raw) => match Url::parse(&raw) {
                     Ok(url) if !is_loopback_url(&url) => {
-                        Err(format!("ZCODE_WEB_URL must be loopback: {url}"))
+                        Err(format!("ZCODE_WEB_URL must be loopback: {}", redacted_url(&url)))
                     }
                     Ok(url) if wait_tcp(&url, Duration::from_secs(10)) => {
-                        log(&format!("[zcode-tauri] attaching to existing {url}"));
+                        log(&format!("[zcode-tauri] attaching to existing {}", redacted_url(&url)));
                         Ok((None, url))
                     }
-                    Ok(url) => Err(format!("ZCODE_WEB_URL={url} is not accepting TCP")),
-                    Err(e) => Err(format!("invalid ZCODE_WEB_URL: {e}")),
+                    Ok(url) => Err(format!("ZCODE_WEB_URL={} is not accepting TCP", redacted_url(&url))),
+                    Err(_) => Err("invalid ZCODE_WEB_URL".into()),
                 },
                 None => spawn_backend().map(|(h, u)| (Some(h), u)),
             };

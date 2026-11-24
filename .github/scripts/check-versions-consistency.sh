@@ -49,7 +49,7 @@ done < "$MANIFEST"
 MANIFEST_KEYS=(NODE_VERSION NODE_SHA256 CODEX_CHANNEL CODEX_VERSION
     CODEX_NPM_INTEGRITY CODEX_SOURCE_VERSION
     CODEX_SOURCE_URL CODEX_SOURCE_SHA256 CODEX_LINK_DEFAULT OPENCODE_VERSION
-    OPENCODE_NPM_INTEGRITY DSH_VERSION DSH_NPM_INTEGRITY CLAUDE_CODE_VERSION
+    OPENCODE_NPM_INTEGRITY OPENCODE_PLATFORM_NPM_INTEGRITY DSH_VERSION DSH_NPM_INTEGRITY CLAUDE_CODE_VERSION
     CLAUDE_CODE_NPM_INTEGRITY
     CLAUDE_CODE_NPM_REGISTRY
     CLAUDE_CODE_PREFIX CLAUDE_CODE_NODE CLAUDE_CODE_LINK_DEFAULT
@@ -122,7 +122,7 @@ esac
 
 # The version watch updates these together with their versions.  A missing or
 # malformed integrity would make the installer reject every future tarball.
-for key in CODEX_NPM_INTEGRITY OPENCODE_NPM_INTEGRITY DSH_NPM_INTEGRITY CLAUDE_CODE_NPM_INTEGRITY; do
+for key in CODEX_NPM_INTEGRITY OPENCODE_NPM_INTEGRITY OPENCODE_PLATFORM_NPM_INTEGRITY DSH_NPM_INTEGRITY CLAUDE_CODE_NPM_INTEGRITY; do
     value=$(manifest_value "$key")
     printf '%s' "$value" | grep -Eq '^sha512-[A-Za-z0-9+/]+={0,2}$' \
         || fail_msg "$key must be a sha512 integrity string"
@@ -229,6 +229,19 @@ for ref in $readme_codex_refs; do
     [ "$ref" = "$expected_codex_ref" ] \
         || fail_msg "README references stale source asset: $ref (expected $expected_codex_ref)"
 done
+
+zcode_ver=$(manifest_value ZCODE_VERSION)
+zcode_ver=${zcode_ver#v}
+readme_zcode_refs=$(grep -o 'zcode-cli_[0-9][0-9.]*_loong64\.tar\.gz' "$README" || true)
+expected_zcode_ref="zcode-cli_${zcode_ver}_loong64.tar.gz"
+for ref in $readme_zcode_refs; do
+    [ "$ref" = "$expected_zcode_ref" ] \
+        || fail_msg "README references stale ZCode asset: $ref (expected $expected_zcode_ref)"
+done
+readme_zcode_sha=$(grep -o 'ZCODE_CLI_SHA256=[0-9a-fA-F]*' "$README" | head -n 1 | cut -d= -f2)
+if [ -n "$readme_zcode_sha" ] && [ "$readme_zcode_sha" != "$(manifest_value ZCODE_CLI_SHA256)" ]; then
+    fail_msg "README ZCODE_CLI_SHA256=$readme_zcode_sha != versions.env $(manifest_value ZCODE_CLI_SHA256)"
+fi
 
 if [ "$fail" -ne 0 ]; then
     printf '\nVersion pins are out of sync. Update versions.env, the installer\n' >&2

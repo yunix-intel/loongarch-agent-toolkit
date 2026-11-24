@@ -111,6 +111,7 @@ CODEX_SOURCE_PREFIX=${CODEX_SOURCE_PREFIX:-/opt}
 CODEX_LINK_DEFAULT=${CODEX_LINK_DEFAULT:-$(manifest_get CODEX_LINK_DEFAULT "$CODEX_LINK_DEFAULT_DEFAULT")}
 OPENCODE_VERSION=${OPENCODE_VERSION:-$(manifest_get OPENCODE_VERSION "$OPENCODE_VERSION_DEFAULT")}
 OPENCODE_NPM_INTEGRITY=${OPENCODE_NPM_INTEGRITY:-$(manifest_get OPENCODE_NPM_INTEGRITY '')}
+OPENCODE_PLATFORM_NPM_INTEGRITY=${OPENCODE_PLATFORM_NPM_INTEGRITY:-$(manifest_get OPENCODE_PLATFORM_NPM_INTEGRITY '')}
 DSH_VERSION=${DSH_VERSION:-$(manifest_get DSH_VERSION "$DSH_VERSION_DEFAULT")}
 DSH_NPM_INTEGRITY=${DSH_NPM_INTEGRITY:-$(manifest_get DSH_NPM_INTEGRITY '')}
 BIN_DIR=${BIN_DIR:-/usr/local/bin}
@@ -246,80 +247,29 @@ EOF
 }
 trap cleanup EXIT HUP INT TERM
 
-# A link target is relative to the directory containing the link (symlinks) or
-# to the archive root (hardlinks).  Validate it after applying the same
-# component stripping as extraction: checking the unstripped member path lets a
-# `top/bin/x -> ../../escape` link resolve inside the pre-strip root but land
-# outside the real extraction root.
-check_tar_links() {
-    link_archive=$1
-    link_base=$(realpath -m "$2")
-    link_strip=${3:-0}
-    case "$link_strip" in
-        ''|*[!0-9]*) die "invalid strip count for $link_archive: $link_strip" ;;
-    esac
-    link_listing="$TMP/tar-listing.$$"
-    link_records="$TMP/tar-links.$$"
-    # Force the C locale: tar localises " -> " / " link to " and a translated
-    # listing would make the parser silently skip every link entry.
-    LC_ALL=C tar -tvf "$link_archive" > "$link_listing" \
-        || die "cannot list archive $link_archive"
-    awk -v strip="$link_strip" '
-        /^[lh]/ {
-            kind = substr($0, 1, 1)
-            if ((i = index($0, " -> ")) > 0) {
-                left = substr($0, 1, i - 1)
-                target = substr($0, i + 4)
-            } else if ((i = index($0, " link to ")) > 0) {
-                left = substr($0, 1, i - 1)
-                target = substr($0, i + 9)
-            } else next
-            n = split(left, fields, " ")
-            member = fields[n]
-            n = split(member, parts, "/")
-            if (strip >= n) next
-            effective = ""
-            for (i = strip + 1; i <= n; i++)
-                effective = effective (effective == "" ? "" : "/") parts[i]
-            if (kind == "h") {
-                # Keep the original target: the shell rejects any ".." and
-                # only then applies the strip count.  Stripping here would
-                # hide a malicious "../escape" behind "escape".
-                print effective; print "root"; print target
-            } else {
-                print effective; print "dir"; print target
-            }
-        }
-    ' "$link_listing" > "$link_records"
-    # Records are three lines each: member, kind (root|dir), target.
-    while IFS= read -r link_member && IFS= read -r link_kind && IFS= read -r link_target; do
-        [ -n "$link_member" ] || continue
-        case "$link_target" in
-            /*) die "archive $link_archive contains an absolute link target: $link_member -> $link_target" ;;
+# Validate every symlink in the extracted tree.  Parsing `tar -tvf` is
+# locale- and space-sensitive and cannot see link chains; walking the real
+# tree after extraction is exact.  GNU tar unlinks an existing symlink before
+# creating an entry at that path, so extraction cannot write through a link it
+# just created.
+check_extracted_links() {
+    el_root=$(realpath -m "$1")
+    el_list="$TMP/extracted-links.$$"
+    find "$el_root" -type l -print > "$el_list" \
+        || die "cannot list links in $el_root"
+    while IFS= read -r el_link; do
+        el_target=$(readlink "$el_link") || die "cannot read link $el_link"
+        case "$el_target" in
+            /*) die "archive link has an absolute target: $el_link -> $el_target" ;;
         esac
-        case "$link_kind" in
-            root)
-                case "$link_target" in
-                    ..|../*|*/../*|*/..)
-                        die "archive $link_archive hardlink target contains ..: $link_member -> $link_target" ;;
-                esac
-                if [ "$link_strip" -gt 0 ]; then
-                    link_target=$(printf '%s' "$link_target" | cut -d/ -f$((link_strip + 1))-)
-                    [ -n "$link_target" ] || continue
-                fi
-                link_resolved=$(realpath -m "$link_base/$link_target") \
-                    || die "cannot resolve link target in $link_archive: $link_member -> $link_target" ;;
-            dir)
-                link_resolved=$(realpath -m "$link_base/$(dirname "$link_member")/$link_target") \
-                    || die "cannot resolve link target in $link_archive: $link_member -> $link_target" ;;
-            *) die "internal error: unknown link kind in $link_archive" ;;
+        el_resolved=$(realpath -m "$(dirname "$el_link")/$el_target") \
+            || die "cannot resolve link $el_link -> $el_target"
+        case "$el_resolved" in
+            "$el_root"|"$el_root"/*) ;;
+            *) die "archive link escapes the extraction root: $el_link -> $el_target" ;;
         esac
-        case "$link_resolved" in
-            "$link_base"|"$link_base"/*) ;;
-            *) die "archive $link_archive link escapes the extraction root: $link_member -> $link_target" ;;
-        esac
-    done < "$link_records"
-    rm -f "$link_listing" "$link_records"
+    done < "$el_list"
+    rm -f "$el_list"
 }
 
 NODE_TARBALL=$(basename "$NODE_URL")
@@ -348,8 +298,8 @@ mkdir -p "$TMP/node"
 if tar -tJf "$TMP/$NODE_TARBALL" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
     die "Node archive contains an absolute or parent-traversal path"
 fi
-check_tar_links "$TMP/$NODE_TARBALL" "$TMP/node" 1
 tar -xJf "$TMP/$NODE_TARBALL" -C "$TMP/node" --strip-components=1
+check_extracted_links "$TMP/node"
 
 [ -x "$TMP/node/bin/node" ] || die "Node install failed: $TMP/node/bin/node missing"
 NODE_ABI=$(abi_name "$(elf_flags "$TMP/node/bin/node")")
@@ -401,6 +351,9 @@ install_pkg() {
         ''|sha512-*) ;;
         *) die "invalid npm integrity for $pkg: $integrity" ;;
     esac
+    if [ -z "$integrity" ] && [ "${ALLOW_UNVERIFIED_NPM:-0}" != "1" ]; then
+        die "missing npm integrity for $pkg; refusing to install an unverified package (set ALLOW_UNVERIFIED_NPM=1 to override)"
+    fi
     if [ -n "$integrity" ]; then
         need openssl
     fi
@@ -540,8 +493,8 @@ install_codex_source() {
 
     src="$TMP/codex-src"
     mkdir -p "$src"
-    check_tar_links "$archive" "$src"
     tar -xzf "$archive" -C "$src"
+    check_extracted_links "$src"
 
     bin=''
     for candidate in "$src"/*/bin/codex "$src"/*/codex "$src"/bin/codex "$src"/codex; do
@@ -605,10 +558,34 @@ fi
 # lifecycle script.
 install_pkg "opencode-ai" "$OPENCODE_VERSION" "$OPENCODE_NPM_INTEGRITY" 1
 OPENCODE_ROOT="$NODE_PREFIX/lib/node_modules/opencode-ai"
-if [ -f "$OPENCODE_ROOT/postinstall.mjs" ]; then
-    ( cd "$OPENCODE_ROOT" && "$NODE_PREFIX/bin/node" postinstall.mjs ) \
-        || die "opencode-ai postinstall failed"
+# Do not run opencode-ai's postinstall: it can npm-install a platform package
+# at runtime, which our main-package integrity pin does not cover.  Fetch the
+# platform tarball ourselves, verify its own pin, and copy the binary.
+OPENCODE_PLATFORM=opencode-linux-loong64
+if [ -z "$OPENCODE_PLATFORM_NPM_INTEGRITY" ]; then
+    die "missing OPENCODE_PLATFORM_NPM_INTEGRITY; refusing to install an unverified opencode platform binary"
 fi
+need openssl
+platform_dir="$TMP/opencode-platform"
+rm -rf "$platform_dir"; mkdir -p "$platform_dir"
+if ! "$NPM" pack "$OPENCODE_PLATFORM@$OPENCODE_VERSION" \
+    --registry "$NPM_REGISTRY" --pack-destination "$platform_dir" >/dev/null; then
+    die "failed to pack $OPENCODE_PLATFORM@$OPENCODE_VERSION"
+fi
+platform_tgz=$(find "$platform_dir" -maxdepth 1 -type f -name '*.tgz' | head -n 1)
+[ -n "$platform_tgz" ] || die "pack produced no tarball for $OPENCODE_PLATFORM"
+platform_actual="sha512-$(openssl dgst -sha512 -binary "$platform_tgz" | openssl base64 -A)"
+[ "$platform_actual" = "$OPENCODE_PLATFORM_NPM_INTEGRITY" ] \
+    || die "opencode platform integrity mismatch: expected $OPENCODE_PLATFORM_NPM_INTEGRITY, got $platform_actual"
+mkdir -p "$platform_dir/extract"
+tar -xzf "$platform_tgz" -C "$platform_dir/extract"
+platform_bin="$platform_dir/extract/package/bin/opencode"
+[ -f "$platform_bin" ] || die "opencode platform tarball is missing bin/opencode"
+mkdir -p "$OPENCODE_ROOT/bin"
+cp "$platform_bin" "$OPENCODE_ROOT/bin/opencode.exe"
+chmod 0755 "$OPENCODE_ROOT/bin/opencode.exe"
+"$OPENCODE_ROOT/bin/opencode.exe" --version >/dev/null 2>&1 \
+    || die "opencode platform binary failed to run"
 # dsh currently has no linux-loong64 node-pty prebuild, so npm may build it
 # with node-gyp.  Keep lifecycle scripts enabled and warn early instead.
 for tool in gcc g++ make python3; do

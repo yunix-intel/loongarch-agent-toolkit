@@ -137,6 +137,18 @@ opencode_ai_integrity() {
     dist_integrity "$file" "$version"
 }
 
+# The installer fetches and verifies the platform tarball itself; pin its
+# integrity alongside the opencode-ai version.
+opencode_platform_integrity() {
+    local version=$1 file="$TMP/opencode-platform.json"
+    [ -n "$version" ] || return 0
+    if ! fetch "$LOONG_REGISTRY/opencode-linux-loong64" "$file"; then
+        warn "failed to query $LOONG_REGISTRY/opencode-linux-loong64"
+        return 0
+    fi
+    dist_integrity "$file" "$version"
+}
+
 # Claude Code's version endpoint is a single manifest, not a packument.
 claude_integrity() {
     local version=$1 file="$TMP/claude-version.json"
@@ -525,14 +537,17 @@ CLAUDE_JS=$(claude_js_latest)
 
 CODEX_PIN_INTEGRITY=$(manifest_value CODEX_NPM_INTEGRITY)
 OPENCODE_PIN_INTEGRITY=$(manifest_value OPENCODE_NPM_INTEGRITY)
+OPENCODE_PLATFORM_PIN_INTEGRITY=$(manifest_value OPENCODE_PLATFORM_NPM_INTEGRITY)
 DSH_PIN_INTEGRITY=$(manifest_value DSH_NPM_INTEGRITY)
 CLAUDE_PIN_INTEGRITY=$(manifest_value CLAUDE_CODE_NPM_INTEGRITY)
 CODEX_PIN_REG_INTEGRITY=$(dist_integrity "$TMP/codex-loong.json" "$CODEX_PIN")
 OPENCODE_PIN_REG_INTEGRITY=$(opencode_ai_integrity "$OPENCODE_PIN")
+OPENCODE_PLATFORM_PIN_REG_INTEGRITY=$(opencode_platform_integrity "$OPENCODE_PIN")
 DSH_PIN_REG_INTEGRITY=$(dist_integrity "$TMP/dsh-loong.json" "$DSH_PIN")
 CLAUDE_PIN_REG_INTEGRITY=$(claude_integrity "$CLAUDE_PIN")
 CODEX_INTEGRITY=$(dist_integrity "$TMP/codex-loong.json" "$CODEX_LOONG")
 OPENCODE_INTEGRITY=$(opencode_ai_integrity "$OPENCODE_LOONG")
+OPENCODE_PLATFORM_INTEGRITY=$(opencode_platform_integrity "$OPENCODE_LOONG")
 DSH_INTEGRITY=$(dist_integrity "$TMP/dsh-loong.json" "$DSH_LOONG")
 CLAUDE_INTEGRITY=$(claude_integrity "$CLAUDE_JS")
 
@@ -547,6 +562,7 @@ integrity_pin_check() {
 }
 integrity_pin_check '@openai/codex' "$CODEX_PIN" "$CODEX_PIN_INTEGRITY" "$CODEX_PIN_REG_INTEGRITY"
 integrity_pin_check 'opencode-ai' "$OPENCODE_PIN" "$OPENCODE_PIN_INTEGRITY" "$OPENCODE_PIN_REG_INTEGRITY"
+integrity_pin_check 'opencode-linux-loong64' "$OPENCODE_PIN" "$OPENCODE_PLATFORM_PIN_INTEGRITY" "$OPENCODE_PLATFORM_PIN_REG_INTEGRITY"
 integrity_pin_check '@deepseek-ai/dsh' "$DSH_PIN" "$DSH_PIN_INTEGRITY" "$DSH_PIN_REG_INTEGRITY"
 integrity_pin_check '@anthropic-ai/claude-code' "$CLAUDE_PIN" "$CLAUDE_PIN_INTEGRITY" "$CLAUDE_PIN_REG_INTEGRITY"
 
@@ -760,6 +776,18 @@ consider_pkg() {
 
 consider_pkg CODEX_VERSION CODEX_NPM_INTEGRITY '@openai/codex' "$CODEX_PIN" "$CODEX_LOONG" "$CODEX_INTEGRITY" "$CODEX_NOTE"
 consider_pkg OPENCODE_VERSION OPENCODE_NPM_INTEGRITY 'opencode-ai' "$OPENCODE_PIN" "$OPENCODE_SEL" "$OPENCODE_INTEGRITY" 'opencode-linux-loong64 latest'
+if [ -n "$OPENCODE_SEL" ] && [ -n "$OPENCODE_INTEGRITY" ] \
+    && { version_gt "$OPENCODE_SEL" "$OPENCODE_PIN" || [ -z "$OPENCODE_PLATFORM_PIN_INTEGRITY" ]; }; then
+    if [ -z "$OPENCODE_PLATFORM_INTEGRITY" ]; then
+        warn "no registry integrity for opencode-linux-loong64@$OPENCODE_SEL; refusing to update the platform pin"
+    else
+        printf '%s\t%s\t%s\t%s\t%s\t\t\n' \
+            OPENCODE_PLATFORM_NPM_INTEGRITY opencode-linux-loong64 \
+            "$OPENCODE_PLATFORM_PIN_INTEGRITY" "$OPENCODE_PLATFORM_INTEGRITY" \
+            'opencode platform tarball' >> "$TMP/changes.tsv"
+        CHANGED=1
+    fi
+fi
 consider_pkg DSH_VERSION DSH_NPM_INTEGRITY '@deepseek-ai/dsh' "$DSH_PIN" "$DSH_SEL" "$DSH_INTEGRITY" 'Loongnix registry latest'
 consider_pkg CLAUDE_CODE_VERSION CLAUDE_CODE_NPM_INTEGRITY '@anthropic-ai/claude-code' "$CLAUDE_PIN" "$CLAUDE_SEL" "$CLAUDE_INTEGRITY" 'newest tarball containing cli.js'
 
